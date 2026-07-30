@@ -140,14 +140,30 @@
     // 🔥 Firebaseからリアルタイム取得
     songsRef.on('value', (snapshot) => {
       const data = snapshot.val();
+      
+      // 現在再生中の曲のIDを記憶しておく
+      const currentSongId = currentPlaylist[currentIndex] ? currentPlaylist[currentIndex].id : null;
+
       if (data) {
         songs = Object.keys(data).map(key => ({ id: key, ...data[key] }));
       } else {
         songs = [];
       }
+
       sortSongs();
       updatePlaylistByMode();
+
+      // 順位が変わっても現在選んでいる曲を追従する
+      if (currentSongId) {
+        const newIndex = currentPlaylist.findIndex(s => s.id === currentSongId);
+        if (newIndex !== -1) {
+          currentIndex = newIndex;
+        }
+      }
+
       renderRankingUI();
+      updateTrackInfoDisplay(); // UI上の数字を更新
+
       if (currentPlaylist.length > 0 && (!player || !player.getVideoData)) {
         loadCurrentSong();
       }
@@ -168,7 +184,7 @@
     }
 
     // --------------------------------------------------
-    // 💾 JSON バックアップ & 復元（Firebaseへ上書き）
+    // 💾 JSON バックアップ & 復元
     // --------------------------------------------------
     function exportData() {
       if (songs.length === 0) return alert('保存するデータがありません。');
@@ -192,7 +208,6 @@
           if (Array.isArray(importedSongs)) {
             if (confirm(`現在のデータを上書きし、${importedSongs.length}曲のデータをFirebaseへ一括登録（同期）しますか？`)) {
               songs = importedSongs;
-              // Firebaseのデータを丸ごと入れ替え
               saveAllToFirebase();
               alert('Firebaseへのデータ復元（同期）が完了しました！');
             }
@@ -243,11 +258,19 @@
       }
     }
 
+    // 🔥 修正点1 & 2: 点数変更ロジック（IDで直接更新し、画面の数字も即書き換え）
     function changeScore(delta) {
       if (currentPlaylist.length === 0) return;
-      const song = currentPlaylist[currentIndex];
-      song.score = Math.min(100, Math.max(0, song.score + delta));
-      db.ref(`music_chart/songs/${song.id}/score`).set(song.score);
+      const currentSong = currentPlaylist[currentIndex];
+      
+      const newScore = Math.min(100, Math.max(0, currentSong.score + delta));
+      currentSong.score = newScore;
+
+      // 動画下の点数表示をその場で即時更新！
+      document.getElementById('display-score').innerText = newScore;
+
+      // Firebase上の該当曲のスコアを更新（IDで指定）
+      db.ref(`music_chart/songs/${currentSong.id}/score`).set(newScore);
     }
 
     function updatePlaylistByMode() {
@@ -265,18 +288,25 @@
       loadCurrentSong();
     }
 
-    function loadCurrentSong() {
+    function updateTrackInfoDisplay() {
       if (currentPlaylist.length === 0) {
         document.getElementById('display-title').innerText = "データがありません";
         return;
       }
       const song = currentPlaylist[currentIndex];
+      if (song) {
+        document.getElementById('display-title').innerText = song.title;
+        document.getElementById('display-plays').innerText = song.playCount;
+        document.getElementById('display-year').innerText = song.year;
+        document.getElementById('display-score').innerText = song.score;
+      }
+    }
 
-      document.getElementById('display-title').innerText = song.title;
-      document.getElementById('display-plays').innerText = song.playCount;
-      document.getElementById('display-year').innerText = song.year;
-      document.getElementById('display-score').innerText = song.score;
+    function loadCurrentSong() {
+      if (currentPlaylist.length === 0) return;
+      const song = currentPlaylist[currentIndex];
 
+      updateTrackInfoDisplay();
       resetListenTimer();
       renderRankingUI();
 
