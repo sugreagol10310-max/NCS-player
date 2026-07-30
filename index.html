@@ -95,6 +95,8 @@
       cursor: pointer;
     }
     .btn:hover { background: #555; }
+    .btn-danger { background: #880000; border-color: #aa0000; }
+    .btn-danger:hover { background: #cc0000; }
     
     .nav-controls {
       display: flex;
@@ -112,17 +114,53 @@
       cursor: pointer;
     }
 
+    /* 楽曲追加フォームのエリア */
+    .add-song-panel {
+      background: #1e1e1e;
+      padding: 15px;
+      border-radius: 10px;
+    }
+    .panel-title { font-size: 16px; font-weight: bold; margin-bottom: 10px; color: #fff; }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .form-row {
+      display: flex;
+      gap: 10px;
+    }
+    input[type="text"], input[type="number"] {
+      padding: 8px;
+      background: #2a2a2a;
+      border: 1px solid #444;
+      border-radius: 5px;
+      color: #fff;
+      flex: 1;
+    }
+    .btn-add {
+      background: #00aa55;
+      color: #fff;
+      border: none;
+      padding: 10px;
+      border-radius: 5px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .btn-add:hover { background: #00cc66; }
+
     /* 右ウィンドウ：ランキングプレビュー */
     .right-panel {
       flex: 1 1 350px;
       background: #1e1e1e;
       border-radius: 10px;
       padding: 15px;
-      max-height: 550px;
-      overflow-y: auto;
+      max-height: 750px;
+      display: flex;
+      flex-direction: column;
     }
     .ranking-title { font-size: 16px; margin-bottom: 10px; color: #fff; border-bottom: 1px solid #333; padding-bottom: 5px; }
-    .rank-list { list-style: none; }
+    .rank-list { list-style: none; overflow-y: auto; flex: 1; }
     .rank-item {
       display: flex;
       align-items: center;
@@ -138,7 +176,15 @@
     .rank-num { width: 40px; font-weight: bold; color: #888; }
     .rank-item.active .rank-num { color: #ff0055; }
     .rank-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 10px; }
-    .rank-score { font-weight: bold; color: #ffcc00; }
+    .rank-score { font-weight: bold; color: #ffcc00; margin-right: 8px; }
+    .rank-del-btn {
+      background: transparent;
+      border: none;
+      color: #666;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .rank-del-btn:hover { color: #ff4444; }
   </style>
 </head>
 <body>
@@ -146,9 +192,9 @@
   <h1>🎵 My Music Chart Master</h1>
 
   <div class="mode-selector">
-    <button class="mode-btn active" onclick="setMode('all')">全曲順</button>
-    <button class="mode-btn" onclick="setMode('top20')">TOP 20</button>
-    <button class="mode-btn" onclick="setMode('bottom')">育成（下位シャッフル）</button>
+    <button class="mode-btn active" onclick="setMode('all', event)">全曲順</button>
+    <button class="mode-btn" onclick="setMode('top20', event)">TOP 20</button>
+    <button class="mode-btn" onclick="setMode('bottom', event)">育成（下位シャッフル）</button>
   </div>
 
   <div class="main-container">
@@ -158,7 +204,7 @@
       </div>
 
       <div class="track-info">
-        <div class="track-title" id="display-title">-</div>
+        <div class="track-title" id="display-title">曲が選択されていません</div>
         <div class="track-meta">
           <span>👁 視聴回数: <span id="display-plays">0</span>回</span>
           <span>📅 発表年: <span id="display-year">-</span>年</span>
@@ -177,6 +223,19 @@
           <button class="nav-btn" onclick="nextSong()">次の曲</button>
         </div>
       </div>
+
+      <div class="add-song-panel">
+        <div class="panel-title">➕ 楽曲を追加する</div>
+        <div class="form-group">
+          <input type="text" id="input-title" placeholder="タイトル（例: Simple Song）">
+          <input type="text" id="input-ytid" placeholder="YouTube URL または 動画ID（例: dQw4w9WgXcQ）">
+          <div class="form-row">
+            <input type="number" id="input-year" placeholder="発表年（例: 2020）" value="2024">
+            <input type="number" id="input-score" placeholder="初期点数" value="80" min="0" max="100">
+          </div>
+          <button class="btn-add" onclick="addNewSong()">リストに追加</button>
+        </div>
+      </div>
     </div>
 
     <div class="right-panel">
@@ -186,27 +245,24 @@
   </div>
 
   <script>
-    // サンプルデータ（200曲中、テスト用データ）
-    // ※ 好きな曲のID・タイトル・リリース年に書き換えてお使いください
+    // デフォルトの初期データ
     let songs = [
-      { id: "1", youtubeId: "dQw4w9WgXcQ", title: "Never Gonna Give You Up", year: 1987, score: 85, playCount: 5 },
-      { id: "2", youtubeId: "kJQP7kiw5Fk", title: "Despacito", year: 2017, score: 90, playCount: 12 },
-      { id: "3", youtubeId: "fJ9rUzIMcZQ", title: "Bohemian Rhapsody", year: 1975, score: 95, playCount: 20 },
-      { id: "4", youtubeId: "L_jWHffIx5E", title: "Smells Like Teen Spirit", year: 1991, score: 85, playCount: 2 }, // 同点テスト用（再生数少ない方が上）
-      { id: "5", youtubeId: "3tmd-ClpJxA", title: "Payphone", year: 2012, score: 78, playCount: 1 }
+      { id: "1720000000001", youtubeId: "dQw4w9WgXcQ", title: "Never Gonna Give You Up", year: 1987, score: 85, playCount: 5 },
+      { id: "1720000000002", youtubeId: "kJQP7kiw5Fk", title: "Despacito", year: 2017, score: 90, playCount: 12 },
+      { id: "1720000000003", youtubeId: "fJ9rUzIMcZQ", title: "Bohemian Rhapsody", year: 1975, score: 95, playCount: 20 }
     ];
 
     let currentPlaylist = [];
     let currentIndex = 0;
     let player;
+    let currentMode = 'all';
 
-    // LocalStorageからデータを復元（データがあれば上書き）
+    // LocalStorageからデータを復元
     if (localStorage.getItem('myMusicChartData')) {
       songs = JSON.parse(localStorage.getItem('myMusicChartData'));
     }
 
     // ランキングソートロジック
-    // 1. 得点（降順） -> 2. 再生回数（昇順） -> 3. タイトル（五十音/アルファベット順）
     function sortSongs() {
       songs.sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
@@ -220,50 +276,112 @@
       localStorage.setItem('myMusicChartData', JSON.stringify(songs));
     }
 
-    // 再生モードの切り替え
-    function setMode(mode) {
-      document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
-      event.target.classList.add('active');
+    // 新しい曲をUIから追加する機能
+    function addNewSong() {
+      const titleInput = document.getElementById('input-title');
+      let ytidInput = document.getElementById('input-ytid').value.trim();
+      const yearInput = document.getElementById('input-year');
+      const scoreInput = document.getElementById('input-score');
 
+      if (!titleInput.value.trim() || !ytidInput) {
+        alert('タイトルとYouTube URL（または動画ID）を入力してください！');
+        return;
+      }
+
+      // URLが貼られた場合は「v=XXXXX」のID部分だけを抽出
+      if (ytidInput.includes('v=')) {
+        ytidInput = ytidInput.split('v=')[1].split('&')[0];
+      } else if (ytidInput.includes('youtu.be/')) {
+        ytidInput = ytidInput.split('youtu.be/')[1].split('?')[0];
+      }
+
+      const newSong = {
+        id: Date.now().toString(),
+        youtubeId: ytidInput,
+        title: titleInput.value.trim(),
+        year: parseInt(yearInput.value) || new Date().getFullYear(),
+        score: Math.min(100, Math.max(0, parseInt(scoreInput.value) || 80)),
+        playCount: 0
+      };
+
+      songs.push(newSong);
       sortSongs();
-      if (mode === 'top20') {
+
+      // フォームリセット
+      titleInput.value = '';
+      document.getElementById('input-ytid').value = '';
+
+      // プレイリスト更新＆画面描画
+      updatePlaylistByMode();
+      renderRankingUI();
+
+      alert(`「${newSong.title}」を追加しました！`);
+    }
+
+    // 曲を削除する機能
+    function deleteSong(id, event) {
+      event.stopPropagation(); // 行クリックイベントを防止
+      if (confirm('この曲をランキングから削除しますか？')) {
+        songs = songs.filter(s => s.id !== id);
+        sortSongs();
+        updatePlaylistByMode();
+        
+        if (currentPlaylist.length === 0) {
+          document.getElementById('display-title').innerText = "曲がありません";
+        } else {
+          if (currentIndex >= currentPlaylist.length) currentIndex = 0;
+          loadCurrentSong();
+        }
+      }
+    }
+
+    // 再生モードに応じたプレイリスト更新
+    function updatePlaylistByMode() {
+      if (currentMode === 'top20') {
         currentPlaylist = songs.slice(0, 20);
-      } else if (mode === 'bottom') {
-        // 下位半分を抽出してシャッフル
+      } else if (currentMode === 'bottom') {
         let bottomHalf = songs.slice(Math.floor(songs.length / 2));
         currentPlaylist = bottomHalf.sort(() => Math.random() - 0.5);
       } else {
         currentPlaylist = [...songs];
       }
+    }
+
+    // 再生モードの切り替え
+    function setMode(mode, e) {
+      document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+      e.target.classList.add('active');
+
+      currentMode = mode;
+      sortSongs();
+      updatePlaylistByMode();
       
       currentIndex = 0;
       loadCurrentSong();
     }
 
-    // 現在の曲を画面＆プレイヤーに反映
+    // 現在の曲を反映
     function loadCurrentSong() {
       if (currentPlaylist.length === 0) return;
       const song = currentPlaylist[currentIndex];
 
-      // 情報更新
       document.getElementById('display-title').innerText = song.title;
       document.getElementById('display-plays').innerText = song.playCount;
       document.getElementById('display-year').innerText = song.year;
       document.getElementById('display-score').innerText = song.score;
 
-      // ランキング表示の更新
       renderRankingUI();
 
-      // 動画再生
       if (player && player.loadVideoById) {
         player.loadVideoById(song.youtubeId);
       }
     }
 
-    // 得点の変更処理（リアルタイム順位付け）
+    // 得点の変更処理
     function changeScore(delta) {
+      if (currentPlaylist.length === 0) return;
       const song = currentPlaylist[currentIndex];
-      song.score = Math.min(100, Math.max(0, song.score + delta)); // 0〜100に制限
+      song.score = Math.min(100, Math.max(0, song.score + delta));
       document.getElementById('display-score').innerText = song.score;
 
       sortSongs();
@@ -285,10 +403,20 @@
           li.classList.add('active');
         }
 
+        // クリックしたらその曲を直接再生できる機能
+        li.onclick = () => {
+          let idx = currentPlaylist.findIndex(s => s.id === song.id);
+          if (idx !== -1) {
+            currentIndex = idx;
+            loadCurrentSong();
+          }
+        };
+
         li.innerHTML = `
           <span class="rank-num">${index + 1}位</span>
           <span class="rank-name">${song.title}</span>
           <span class="rank-score">${song.score}pt</span>
+          <button class="rank-del-btn" onclick="deleteSong('${song.id}', event)">✕</button>
         `;
         listEl.appendChild(li);
       });
@@ -304,16 +432,15 @@
       currentPlaylist = [...songs];
       
       player = new YT.Player('player', {
-        videoId: currentPlaylist[0].youtubeId,
+        videoId: currentPlaylist.length > 0 ? currentPlaylist[0].youtubeId : '',
         playerVars: { 'playsinline': 1 },
         events: {
-          'onReady': () => loadCurrentSong(),
+          'onReady': () => { if (currentPlaylist.length > 0) loadCurrentSong(); },
           'onStateChange': onPlayerStateChange
         }
       });
     }
 
-    // 曲が終わったらカウントアップして次の曲へ
     function onPlayerStateChange(event) {
       if (event.data === YT.PlayerState.ENDED) {
         const song = currentPlaylist[currentIndex];
@@ -324,11 +451,13 @@
     }
 
     function nextSong() {
+      if (currentPlaylist.length === 0) return;
       currentIndex = (currentIndex + 1) % currentPlaylist.length;
       loadCurrentSong();
     }
 
     function prevSong() {
+      if (currentPlaylist.length === 0) return;
       currentIndex = (currentIndex - 1 + currentPlaylist.length) % currentPlaylist.length;
       loadCurrentSong();
     }
