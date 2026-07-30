@@ -3,230 +3,67 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My Music Chart Master</title>
+  <title>My Music Chart Master (Firebase & Backup)</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Helvetica Neue', Arial, sans-serif;
-      background-color: #121212;
-      color: #e0e0e0;
-      padding: 20px;
-    }
-    h1 {
-      text-align: center;
-      margin-bottom: 20px;
-      font-size: 22px;
-      color: #ffffff;
-    }
-    
-    /* モード選択エリア */
-    .mode-selector {
-      display: flex;
-      justify-content: center;
-      gap: 10px;
-      margin-bottom: 20px;
-      flex-wrap: wrap;
-    }
-    .mode-btn {
-      padding: 8px 16px;
-      background-color: #2a2a2a;
-      color: #fff;
-      border: 1px solid #444;
-      border-radius: 20px;
-      cursor: pointer;
-      font-weight: bold;
-      transition: 0.2s;
-    }
-    .mode-btn:hover, .mode-btn.active {
-      background-color: #ff0055;
-      border-color: #ff0055;
-    }
-
-    /* メインレイアウト（2カラム） */
-    .main-container {
-      display: flex;
-      gap: 20px;
-      max-width: 1100px;
-      margin: 0 auto;
-      flex-wrap: wrap;
-    }
-
-    /* 左ウィンドウ：プレイヤー＆操作エリア */
-    .left-panel {
-      flex: 1 1 500px;
-      display: flex;
-      flex-direction: column;
-      gap: 15px;
-    }
-    .player-wrapper {
-      position: relative;
-      width: 100%;
-      aspect-ratio: 16 / 9;
-      background: #000;
-      border-radius: 10px;
-      overflow: hidden;
-    }
+    body { font-family: sans-serif; background-color: #121212; color: #e0e0e0; padding: 20px; }
+    h1 { text-align: center; margin-bottom: 20px; font-size: 22px; }
+    .mode-selector { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; }
+    .mode-btn { padding: 8px 16px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 20px; cursor: pointer; }
+    .mode-btn.active { background: #ff0055; border-color: #ff0055; }
+    .main-container { display: flex; gap: 20px; max-width: 1100px; margin: 0 auto; flex-wrap: wrap; }
+    .left-panel { flex: 1 1 500px; display: flex; flex-direction: column; gap: 15px; }
+    .player-wrapper { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 10px; overflow: hidden; }
     iframe { width: 100%; height: 100%; border: none; }
-
-    .track-info {
-      background: #1e1e1e;
-      padding: 15px;
-      border-radius: 10px;
-    }
+    .track-info, .panel { background: #1e1e1e; padding: 15px; border-radius: 10px; }
     .track-title { font-size: 18px; font-weight: bold; color: #fff; margin-bottom: 8px; }
     .track-meta { font-size: 14px; color: #aaa; display: flex; gap: 15px; margin-bottom: 12px; }
-
-    /* スコア変更コントロール */
-    .score-control {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: #2a2a2a;
-      padding: 10px;
-      border-radius: 8px;
-    }
+    .score-control { display: flex; align-items: center; gap: 10px; background: #2a2a2a; padding: 10px; border-radius: 8px; }
     .score-display { font-size: 20px; font-weight: bold; color: #ffcc00; min-width: 80px; }
-    .btn {
-      padding: 6px 12px;
-      background: #333;
-      color: #fff;
-      border: 1px solid #555;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    .btn:hover { background: #555; }
-    
-    .nav-controls {
-      display: flex;
-      gap: 10px;
-      margin-top: 10px;
-    }
-    .nav-btn {
-      flex: 1;
-      padding: 10px;
-      background: #ff0055;
-      color: #fff;
-      border: none;
-      border-radius: 5px;
-      font-weight: bold;
-      cursor: pointer;
-    }
-
-    /* パネル共通スタイル */
-    .panel {
-      background: #1e1e1e;
-      padding: 15px;
-      border-radius: 10px;
-    }
-    .panel-title { font-size: 16px; font-weight: bold; margin-bottom: 10px; color: #fff; }
-    
-    .form-group {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .form-row {
-      display: flex;
-      gap: 10px;
-    }
-    input[type="text"], input[type="number"] {
-      padding: 8px;
-      background: #2a2a2a;
-      border: 1px solid #444;
-      border-radius: 5px;
-      color: #fff;
-      flex: 1;
-    }
-    .btn-add {
-      background: #00aa55;
-      color: #fff;
-      border: none;
-      padding: 10px;
-      border-radius: 5px;
-      font-weight: bold;
-      cursor: pointer;
-    }
-    .btn-add:hover { background: #00cc66; }
-
-    /* バックアップコントロール */
-    .backup-controls {
-      display: flex;
-      gap: 10px;
-    }
-    .btn-backup {
-      flex: 1;
-      padding: 8px;
-      background: #3a3a3a;
-      color: #ccc;
-      border: 1px solid #555;
-      border-radius: 5px;
-      cursor: pointer;
-      font-size: 13px;
-    }
+    .btn { padding: 6px 12px; background: #333; color: #fff; border: 1px solid #555; border-radius: 5px; cursor: pointer; }
+    .nav-controls { display: flex; gap: 10px; margin-top: 10px; }
+    .nav-btn { flex: 1; padding: 10px; background: #ff0055; color: #fff; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; }
+    .form-group { display: flex; flex-direction: column; gap: 8px; }
+    .form-row { display: flex; gap: 10px; }
+    input { padding: 8px; background: #2a2a2a; border: 1px solid #444; border-radius: 5px; color: #fff; flex: 1; }
+    .btn-add { background: #00aa55; color: #fff; border: none; padding: 10px; border-radius: 5px; font-weight: bold; cursor: pointer; }
+    .backup-controls { display: flex; gap: 10px; }
+    .btn-backup { flex: 1; padding: 8px; background: #3a3a3a; color: #ccc; border: 1px solid #555; border-radius: 5px; cursor: pointer; font-size: 13px; }
     .btn-backup:hover { background: #555; color: #fff; }
-
-    /* 右ウィンドウ：ランキングプレビュー */
-    .right-panel {
-      flex: 1 1 350px;
-      background: #1e1e1e;
-      border-radius: 10px;
-      padding: 15px;
-      max-height: 800px;
-      display: flex;
-      flex-direction: column;
-    }
+    .right-panel { flex: 1 1 350px; background: #1e1e1e; border-radius: 10px; padding: 15px; max-height: 800px; display: flex; flex-direction: column; }
     .ranking-title { font-size: 16px; margin-bottom: 10px; color: #fff; border-bottom: 1px solid #333; padding-bottom: 5px; }
     .rank-list { list-style: none; overflow-y: auto; flex: 1; }
-    .rank-item {
-      display: flex;
-      align-items: center;
-      padding: 8px 10px;
-      border-bottom: 1px solid #2a2a2a;
-      font-size: 14px;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    .rank-item.active {
-      background: #331122;
-      border: 1px solid #ff0055;
-    }
+    .rank-item { display: flex; align-items: center; padding: 8px 10px; border-bottom: 1px solid #2a2a2a; font-size: 14px; border-radius: 5px; cursor: pointer; }
+    .rank-item.active { background: #331122; border: 1px solid #ff0055; }
     .rank-num { width: 40px; font-weight: bold; color: #888; }
     .rank-item.active .rank-num { color: #ff0055; }
     .rank-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 10px; }
     .rank-score { font-weight: bold; color: #ffcc00; margin-right: 8px; }
-    .rank-del-btn {
-      background: transparent;
-      border: none;
-      color: #666;
-      cursor: pointer;
-      font-size: 12px;
-    }
-    .rank-del-btn:hover { color: #ff4444; }
+    .rank-del-btn { background: transparent; border: none; color: #666; cursor: pointer; }
   </style>
 </head>
 <body>
 
-  <h1>🎵 My Music Chart Master</h1>
+  <h1>🎵 My Music Chart Master (Firebaseリアルタイム同期)</h1>
 
   <div class="mode-selector">
     <button class="mode-btn active" onclick="setMode('all', event)">全曲順</button>
     <button class="mode-btn" onclick="setMode('top20', event)">TOP 20</button>
-    <button class="mode-btn" onclick="setMode('bottom', event)">育成（下位シャッフル）</button>
+    <button class="mode-btn" onclick="setMode('bottom', event)">育成</button>
   </div>
 
   <div class="main-container">
     <div class="left-panel">
-      <div class="player-wrapper">
-        <div id="player"></div>
-      </div>
+      <div class="player-wrapper"><div id="player"></div></div>
 
       <div class="track-info">
-        <div class="track-title" id="display-title">曲が選択されていません</div>
+        <div class="track-title" id="display-title">読み込み中...</div>
         <div class="track-meta">
-          <span>👁 視聴回数: <span id="display-plays">0</span>回</span>
-          <span>📅 発表年: <span id="display-year">-</span>年</span>
+          <span>👁 視聴: <span id="display-plays">0</span>回</span>
+          <span>📅 年: <span id="display-year">-</span></span>
         </div>
-
         <div class="score-control">
           <span class="score-display">💯 <span id="display-score">0</span>点</span>
           <button class="btn" onclick="changeScore(-5)">-5</button>
@@ -234,7 +71,6 @@
           <button class="btn" onclick="changeScore(1)">+1</button>
           <button class="btn" onclick="changeScore(5)">+5</button>
         </div>
-
         <div class="nav-controls">
           <button class="nav-btn" onclick="prevSong()">前の曲</button>
           <button class="nav-btn" onclick="nextSong()">次の曲</button>
@@ -242,282 +78,100 @@
       </div>
 
       <div class="panel">
-        <div class="panel-title">➕ 楽曲を追加する</div>
+        <div style="font-weight:bold; margin-bottom:10px;">➕ 楽曲を追加</div>
         <div class="form-group">
-          <input type="text" id="input-title" placeholder="タイトル（例: Simple Song）">
-          <input type="text" id="input-ytid" placeholder="YouTube URL または 動画ID（例: dQw4w9WgXcQ）">
+          <input type="text" id="input-title" placeholder="タイトル">
+          <input type="text" id="input-ytid" placeholder="YouTube URL または ID">
           <div class="form-row">
-            <input type="number" id="input-year" placeholder="発表年（例: 2020）" value="2024">
-            <input type="number" id="input-score" placeholder="初期点数" value="80" min="0" max="100">
+            <input type="number" id="input-year" placeholder="年" value="2024">
+            <input type="number" id="input-score" placeholder="点数" value="80">
           </div>
-          <button class="btn-add" onclick="addNewSong()">リストに追加</button>
+          <button class="btn-add" onclick="addNewSong()">追加</button>
         </div>
       </div>
 
       <div class="panel">
-        <div class="panel-title">💾 データ管理（バックアップ）</div>
+        <div style="font-weight:bold; margin-bottom:10px;">💾 データ管理 (Firebase同期)</div>
         <div class="backup-controls">
-          <button class="btn-backup" onclick="exportData()">バックアップを保存 (.json)</button>
-          <button class="btn-backup" onclick="document.getElementById('import-file').click()">復元 (ファイルを読み込み)</button>
+          <button class="btn-backup" onclick="exportData()">バックアップ保存 (.json)</button>
+          <button class="btn-backup" onclick="document.getElementById('import-file').click()">復元 (JSONを読み込み)</button>
           <input type="file" id="import-file" accept=".json" style="display: none;" onchange="importData(event)">
         </div>
       </div>
     </div>
 
     <div class="right-panel">
-      <div class="ranking-title">🏆 リアルタイムランキング</div>
+      <div class="ranking-title">🏆 ランキング (リアルタイム同期中)</div>
       <ul class="rank-list" id="rank-list"></ul>
     </div>
   </div>
 
   <script>
-    // デフォルトの初期データ
-    let songs = [
-      { id: "1720000000001", youtubeId: "dQw4w9WgXcQ", title: "Never Gonna Give You Up", year: 1987, score: 85, playCount: 5 },
-      { id: "1720000000002", youtubeId: "kJQP7kiw5Fk", title: "Despacito", year: 2017, score: 90, playCount: 12 },
-      { id: "1720000000003", youtubeId: "fJ9rUzIMcZQ", title: "Bohemian Rhapsody", year: 1975, score: 95, playCount: 20 }
-    ];
+    // --------------------------------------------------
+    // 🔥 1. あなたのFirebase設定を貼り付けてください
+    // --------------------------------------------------
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+      projectId: "YOUR_PROJECT",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "XXXXX",
+      appId: "XXXXX"
+    };
 
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const songsRef = db.ref('music_chart/songs');
+
+    // --------------------------------------------------
+    // アプリ変数
+    // --------------------------------------------------
+    let songs = [];
     let currentPlaylist = [];
     let currentIndex = 0;
     let player;
     let currentMode = 'all';
 
-    // 視聴計測用変数（実再生時間の積み上げタイマー）
     let listenedSeconds = 0;
     let isCountedCurrentSong = false;
     let listenTimer = null;
 
-    // LocalStorageからデータを復元
-    if (localStorage.getItem('myMusicChartData')) {
-      try {
-        songs = JSON.parse(localStorage.getItem('myMusicChartData'));
-      } catch (e) {
-        console.error("データの読み込みエラー", e);
+    // 🔥 Firebaseからリアルタイム取得
+    songsRef.on('value', (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        songs = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+      } else {
+        songs = [];
       }
+      sortSongs();
+      updatePlaylistByMode();
+      renderRankingUI();
+      if (currentPlaylist.length > 0 && (!player || !player.getVideoData)) {
+        loadCurrentSong();
+      }
+    });
+
+    function saveAllToFirebase() {
+      const dataObj = {};
+      songs.forEach(s => { dataObj[s.id] = s; });
+      songsRef.set(dataObj);
     }
 
-    // ランキングソートロジック
-    // 1. 得点（降順） -> 2. 再生回数（昇順） -> 3. タイトル（五十音/アルファベット順）
     function sortSongs() {
       songs.sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
         if (a.playCount !== b.playCount) return a.playCount - b.playCount;
         return a.title.localeCompare(b.title, 'ja');
       });
-      saveData();
     }
 
-    function saveData() {
-      localStorage.setItem('myMusicChartData', JSON.stringify(songs));
-    }
-
-    // 新しい曲をUIから追加する機能
-    function addNewSong() {
-      const titleInput = document.getElementById('input-title');
-      let ytidInput = document.getElementById('input-ytid').value.trim();
-      const yearInput = document.getElementById('input-year');
-      const scoreInput = document.getElementById('input-score');
-
-      if (!titleInput.value.trim() || !ytidInput) {
-        alert('タイトルとYouTube URL（または動画ID）を入力してください！');
-        return;
-      }
-
-      // URL補正（通常URL / 共有URLからIDのみ取得）
-      if (ytidInput.includes('v=')) {
-        ytidInput = ytidInput.split('v=')[1].split('&')[0];
-      } else if (ytidInput.includes('youtu.be/')) {
-        ytidInput = ytidInput.split('youtu.be/')[1].split('?')[0];
-      }
-
-      const newSong = {
-        id: Date.now().toString(),
-        youtubeId: ytidInput,
-        title: titleInput.value.trim(),
-        year: parseInt(yearInput.value) || new Date().getFullYear(),
-        score: Math.min(100, Math.max(0, parseInt(scoreInput.value) || 80)),
-        playCount: 0
-      };
-
-      songs.push(newSong);
-      sortSongs();
-
-      titleInput.value = '';
-      document.getElementById('input-ytid').value = '';
-
-      updatePlaylistByMode();
-      renderRankingUI();
-
-      alert(`「${newSong.title}」を追加しました！`);
-    }
-
-    // 曲を削除する機能
-    function deleteSong(id, event) {
-      event.stopPropagation();
-      if (confirm('この曲をランキングから削除しますか？')) {
-        songs = songs.filter(s => s.id !== id);
-        sortSongs();
-        updatePlaylistByMode();
-        
-        if (currentPlaylist.length === 0) {
-          document.getElementById('display-title').innerText = "曲がありません";
-        } else {
-          if (currentIndex >= currentPlaylist.length) currentIndex = 0;
-          loadCurrentSong();
-        }
-      }
-    }
-
-    // 再生モードに応じたプレイリスト更新
-    function updatePlaylistByMode() {
-      if (currentMode === 'top20') {
-        currentPlaylist = songs.slice(0, 20);
-      } else if (currentMode === 'bottom') {
-        let bottomHalf = songs.slice(Math.floor(songs.length / 2));
-        currentPlaylist = bottomHalf.sort(() => Math.random() - 0.5);
-      } else {
-        currentPlaylist = [...songs];
-      }
-    }
-
-    // 再生モードの切り替え
-    function setMode(mode, e) {
-      document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
-      e.target.classList.add('active');
-
-      currentMode = mode;
-      sortSongs();
-      updatePlaylistByMode();
-      
-      currentIndex = 0;
-      loadCurrentSong();
-    }
-
-    // 現在の曲を反映
-    function loadCurrentSong() {
-      if (currentPlaylist.length === 0) return;
-      const song = currentPlaylist[currentIndex];
-
-      document.getElementById('display-title').innerText = song.title;
-      document.getElementById('display-plays').innerText = song.playCount;
-      document.getElementById('display-year').innerText = song.year;
-      document.getElementById('display-score').innerText = song.score;
-
-      // カウントタイマー＆計測時間を初期化
-      resetListenTimer();
-
-      renderRankingUI();
-
-      if (player && player.loadVideoById) {
-        player.loadVideoById(song.youtubeId);
-      }
-    }
-
-    // 得点の変更処理
-    function changeScore(delta) {
-      if (currentPlaylist.length === 0) return;
-      const song = currentPlaylist[currentIndex];
-      song.score = Math.min(100, Math.max(0, song.score + delta));
-      document.getElementById('display-score').innerText = song.score;
-
-      sortSongs();
-      renderRankingUI();
-    }
-
-    // 右側のランキングUIを描画
-    function renderRankingUI() {
-      sortSongs();
-      const listEl = document.getElementById('rank-list');
-      listEl.innerHTML = '';
-
-      const currentSong = currentPlaylist[currentIndex];
-
-      songs.forEach((song, index) => {
-        const li = document.createElement('li');
-        li.className = 'rank-item';
-        if (currentSong && song.id === currentSong.id) {
-          li.classList.add('active');
-        }
-
-        li.onclick = () => {
-          let idx = currentPlaylist.findIndex(s => s.id === song.id);
-          if (idx !== -1) {
-            currentIndex = idx;
-            loadCurrentSong();
-          }
-        };
-
-        li.innerHTML = `
-          <span class="rank-num">${index + 1}位</span>
-          <span class="rank-name">${song.title}</span>
-          <span class="rank-score">${song.score}pt</span>
-          <button class="rank-del-btn" onclick="deleteSong('${song.id}', event)">✕</button>
-        `;
-        listEl.appendChild(li);
-      });
-    }
-
-    // ----------------------------------------------------
-    // 改良版 視聴カウント計測ロジック（実際の再生秒数を積算）
-    // ----------------------------------------------------
-    function onPlayerStateChange(event) {
-      if (event.data === YT.PlayerState.PLAYING) {
-        startListeningTimer();
-      } else {
-        stopListeningTimer();
-      }
-
-      if (event.data === YT.PlayerState.ENDED) {
-        nextSong();
-      }
-    }
-
-    function startListeningTimer() {
-      stopListeningTimer();
-
-      listenTimer = setInterval(() => {
-        if (!player || !player.getDuration || isCountedCurrentSong) return;
-
-        const duration = player.getDuration();
-        if (duration <= 0) return;
-
-        // 実際の再生時間を1秒加算
-        listenedSeconds++;
-
-        // 「実再生時間 ÷ 曲長」が 30% (0.3) を超えたらカウント！
-        if ((listenedSeconds / duration) >= 0.3) {
-          const song = currentPlaylist[currentIndex];
-          song.playCount++;
-          isCountedCurrentSong = true;
-
-          saveData();
-          document.getElementById('display-plays').innerText = song.playCount;
-          sortSongs();
-          renderRankingUI();
-
-          stopListeningTimer();
-        }
-      }, 1000);
-    }
-
-    function stopListeningTimer() {
-      if (listenTimer) {
-        clearInterval(listenTimer);
-        listenTimer = null;
-      }
-    }
-
-    function resetListenTimer() {
-      stopListeningTimer();
-      listenedSeconds = 0;
-      isCountedCurrentSong = false;
-    }
-
-    // ----------------------------------------------------
-    // バックアップ (JSON書き出し & 復元)
-    // ----------------------------------------------------
+    // --------------------------------------------------
+    // 💾 JSON バックアップ & 復元（Firebaseへ上書き）
+    // --------------------------------------------------
     function exportData() {
+      if (songs.length === 0) return alert('保存するデータがありません。');
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(songs, null, 2));
       const downloadAnchor = document.createElement('a');
       downloadAnchor.setAttribute("href", dataStr);
@@ -536,11 +190,12 @@
         try {
           const importedSongs = JSON.parse(e.target.result);
           if (Array.isArray(importedSongs)) {
-            songs = importedSongs;
-            sortSongs();
-            updatePlaylistByMode();
-            loadCurrentSong();
-            alert('データを正常に復元しました！');
+            if (confirm(`現在のデータを上書きし、${importedSongs.length}曲のデータをFirebaseへ一括登録（同期）しますか？`)) {
+              songs = importedSongs;
+              // Firebaseのデータを丸ごと入れ替え
+              saveAllToFirebase();
+              alert('Firebaseへのデータ復元（同期）が完了しました！');
+            }
           } else {
             alert('ファイル形式が正しくありません。');
           }
@@ -551,19 +206,146 @@
       reader.readAsText(file);
     }
 
-    // ----------------------------------------------------
-    // YouTube APIの読み込みとプレイヤー初期化
-    // ----------------------------------------------------
+    // --------------------------------------------------
+    // 楽曲操作＆再生機能
+    // --------------------------------------------------
+    function addNewSong() {
+      const titleInput = document.getElementById('input-title');
+      let ytidInput = document.getElementById('input-ytid').value.trim();
+      const yearInput = document.getElementById('input-year');
+      const scoreInput = document.getElementById('input-score');
+
+      if (!titleInput.value.trim() || !ytidInput) return alert('入力してください');
+
+      if (ytidInput.includes('v=')) ytidInput = ytidInput.split('v=')[1].split('&')[0];
+      else if (ytidInput.includes('youtu.be/')) ytidInput = ytidInput.split('youtu.be/')[1].split('?')[0];
+
+      const newId = Date.now().toString();
+      const newSong = {
+        id: newId,
+        youtubeId: ytidInput,
+        title: titleInput.value.trim(),
+        year: parseInt(yearInput.value) || 2024,
+        score: Math.min(100, Math.max(0, parseInt(scoreInput.value) || 80)),
+        playCount: 0
+      };
+
+      db.ref(`music_chart/songs/${newId}`).set(newSong);
+
+      titleInput.value = '';
+      document.getElementById('input-ytid').value = '';
+    }
+
+    function deleteSong(id, e) {
+      e.stopPropagation();
+      if (confirm('削除しますか？')) {
+        db.ref(`music_chart/songs/${id}`).remove();
+      }
+    }
+
+    function changeScore(delta) {
+      if (currentPlaylist.length === 0) return;
+      const song = currentPlaylist[currentIndex];
+      song.score = Math.min(100, Math.max(0, song.score + delta));
+      db.ref(`music_chart/songs/${song.id}/score`).set(song.score);
+    }
+
+    function updatePlaylistByMode() {
+      if (currentMode === 'top20') currentPlaylist = songs.slice(0, 20);
+      else if (currentMode === 'bottom') currentPlaylist = songs.slice(Math.floor(songs.length / 2)).sort(() => Math.random() - 0.5);
+      else currentPlaylist = [...songs];
+    }
+
+    function setMode(mode, e) {
+      document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+      e.target.classList.add('active');
+      currentMode = mode;
+      updatePlaylistByMode();
+      currentIndex = 0;
+      loadCurrentSong();
+    }
+
+    function loadCurrentSong() {
+      if (currentPlaylist.length === 0) {
+        document.getElementById('display-title').innerText = "データがありません";
+        return;
+      }
+      const song = currentPlaylist[currentIndex];
+
+      document.getElementById('display-title').innerText = song.title;
+      document.getElementById('display-plays').innerText = song.playCount;
+      document.getElementById('display-year').innerText = song.year;
+      document.getElementById('display-score').innerText = song.score;
+
+      resetListenTimer();
+      renderRankingUI();
+
+      if (player && player.loadVideoById) {
+        player.loadVideoById(song.youtubeId);
+      }
+    }
+
+    function renderRankingUI() {
+      const listEl = document.getElementById('rank-list');
+      listEl.innerHTML = '';
+      const currentSong = currentPlaylist[currentIndex];
+
+      songs.forEach((song, index) => {
+        const li = document.createElement('li');
+        li.className = 'rank-item';
+        if (currentSong && song.id === currentSong.id) li.classList.add('active');
+
+        li.onclick = () => {
+          let idx = currentPlaylist.findIndex(s => s.id === song.id);
+          if (idx !== -1) { currentIndex = idx; loadCurrentSong(); }
+        };
+
+        li.innerHTML = `
+          <span class="rank-num">${index + 1}位</span>
+          <span class="rank-name">${song.title}</span>
+          <span class="rank-score">${song.score}pt</span>
+          <button class="rank-del-btn" onclick="deleteSong('${song.id}', event)">✕</button>
+        `;
+        listEl.appendChild(li);
+      });
+    }
+
+    // 実再生時間30%計測ロジック
+    function onPlayerStateChange(event) {
+      if (event.data === YT.PlayerState.PLAYING) startListeningTimer();
+      else stopListeningTimer();
+      if (event.data === YT.PlayerState.ENDED) nextSong();
+    }
+
+    function startListeningTimer() {
+      stopListeningTimer();
+      listenTimer = setInterval(() => {
+        if (!player || !player.getDuration || isCountedCurrentSong) return;
+        const duration = player.getDuration();
+        if (duration <= 0) return;
+
+        listenedSeconds++;
+        if ((listenedSeconds / duration) >= 0.3) {
+          const song = currentPlaylist[currentIndex];
+          song.playCount++;
+          isCountedCurrentSong = true;
+          db.ref(`music_chart/songs/${song.id}/playCount`).set(song.playCount);
+          stopListeningTimer();
+        }
+      }, 1000);
+    }
+
+    function stopListeningTimer() { if (listenTimer) clearInterval(listenTimer); listenTimer = null; }
+    function resetListenTimer() { stopListeningTimer(); listenedSeconds = 0; isCountedCurrentSong = false; }
+
+    // YouTube API
     const tag = document.createElement('script');
     tag.src = "https://www.youtube.com/iframe_api";
     document.getElementsByTagName('script')[0].parentNode.insertBefore(tag, document.getElementsByTagName('script')[0]);
 
     function onYouTubeIframeAPIReady() {
-      sortSongs();
-      currentPlaylist = [...songs];
-      
       player = new YT.Player('player', {
-        videoId: currentPlaylist.length > 0 ? currentPlaylist[0].youtubeId : '',
+        videoId: '',
         playerVars: { 'playsinline': 1 },
         events: {
           'onReady': () => { if (currentPlaylist.length > 0) loadCurrentSong(); },
