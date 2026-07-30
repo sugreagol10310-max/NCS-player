@@ -1,143 +1,119 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Private Music Player (Test)</title>
-    <style>
-        body { font-family: sans-serif; background: #121212; color: #fff; text-align: center; padding: 20px; }
-        .container { max-width: 640px; margin: 0 auto; }
-        .player-wrapper { position: relative; padding-bottom: 56.25%; height: 0; margin-bottom: 20px; background: #000; }
-        .player-wrapper iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
-        .controls { margin-bottom: 20px; }
-        button { background: #1e1e1e; color: #fff; border: 1px solid #333; padding: 10px 20px; cursor: pointer; border-radius: 5px; margin: 0 5px; }
-        button:hover { background: #333; }
-        .list-title { text-align: left; border-bottom: 1px solid #333; padding-bottom: 5px; margin-top: 30px; }
-        ul { list-style: none; padding: 0; text-align: left; }
-        li { padding: 10px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; }
-        .active { background: #222; color: #1db954; font-weight: bold; }
-        .count-badge { background: #333; color: #aaa; padding: 2px 8px; border-radius: 10px; font-size: 0.9em; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>マイソング プレイヤー</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #121212;
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    h1 {
+      font-size: 24px;
+      margin-bottom: 20px;
+    }
+    #player-container {
+      position: relative;
+      width: 100%;
+      max-width: 640px;
+      aspect-ratio: 16 / 9;
+    }
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      border-radius: 10px;
+    }
+    .controls {
+      margin-top: 15px;
+      display: flex;
+      gap: 10px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 5px;
+      background-color: #ff0000;
+      color: white;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    button:hover {
+      background-color: #cc0000;
+    }
+  </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>My Player 🎧</h1>
-    
-    <!-- YouTubeプレイヤーが表示される枠 -->
-    <div class="player-wrapper">
-        <div id="player"></div>
-    </div>
+  <h1>🎵 マイプレイリスト プレイヤー</h1>
 
-    <!-- 操作ボタン -->
-    <div class="controls">
-        <button onclick="playNext()">⏭️ 次の曲へ</button>
-        <button onclick="clearCounts()" style="color: #ff5c5c;">⚠️ 回数リセット</button>
-    </div>
+  <div id="player-container">
+    <div id="player"></div>
+  </div>
 
-    <!-- 曲名と再生回数のリスト -->
-    <h3 class="list-title">プレイリスト（再生回数）</h3>
-    <ul id="playlist-views">
-        <!-- JavaScriptでここに曲のリストが生成されます -->
-    </ul>
-</div>
+  <div class="controls">
+    <button onclick="prevVideo()">前の曲</button>
+    <button onclick="nextVideo()">次の曲</button>
+  </div>
 
-<script>
-    // 1. YouTube プレイリストデータ（テスト用に確実に再生できる動画IDに差し替えています）
-    var songs = [
-        { id: '8a2a79hyCng', title: 'テスト動画 A (NASA Space Live)' },
-        { id: '8a2a79hyCng', title: 'テスト動画 B (Earth from Space)' },
-        { id: '8a2a79hyCng', title: 'テスト動画 C (Relaxing Music)' }
+  <script>
+    // 1. 好きなYouTube動画の「動画ID」を配列に指定します
+    // ※ 動画URLの「v=XXXXXX」の「XXXXXX」の部分です
+    const playlist = [
+      'dQw4w9WgXcQ', // 曲1の動画ID
+      'kJQP7kiw5Fk', // 曲2の動画ID
+      'fJ9rUzIMcZQ'  // 曲3の動画ID
     ];
-    
-    var currentTrack = 0;
-    var player = null; // 初期値を明確にnullにする
-    var isPlayerReady = false; // プレイヤーの準備ができたか判定するフラグ
 
-    // 2. YouTube IFrame API の読み込み（エラーを修正）
-    var tag = document.createElement('script');
-    tag.src = "https://youtube.com";
-    var firstScriptTag = document.getElementsByTagName('script')[0];
+    let currentTrackIndex = 0;
+    let player;
+
+    // 2. YouTube IFrame Player APIの読み込み
+    const tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    const firstScriptTag = document.getElementsByTagName('script')[0];
     firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 
-    // 3. APIの準備ができたらプレイヤーを生成
-    window.onYouTubeIframeAPIReady = function() {
-        player = new YT.Player('player', {
-            videoId: songs[currentTrack].id,
-            playerVars: {
-                'playsinline': 1,
-                'rel': 0,
-                'mute': 1 // 最初はミュートでブロックを回避
-            },
-            events: {
-                'onReady': onPlayerReady,
-                'onStateChange': onPlayerStateChange
-            }
-        });
+    // 3. プレイヤーの初期化
+    function onYouTubeIframeAPIReady() {
+      player = new YT.Player('player', {
+        videoId: playlist[currentTrackIndex],
+        playerVars: {
+          'playsinline': 1,
+          'autoplay': 0
+        },
+        events: {
+          'onStateChange': onPlayerStateChange
+        }
+      });
     }
 
-    // プレイヤーの準備が完了したときの処理
-    function onPlayerReady() {
-        isPlayerReady = true; // 準備完了フラグを立てる
-        updatePlaylistUI();
-    }
-
-    // 4. 再生状態が変化したときの処理
+    // 4. 曲が終わったら自動で次の曲へ移行
     function onPlayerStateChange(event) {
-        // 動画が最後まで再生し終わったら（YT.PlayerState.ENDED = 0）
-        if (event.data == YT.PlayerState.ENDED) {
-            countView(songs[currentTrack].id); // 再生回数をカウントアップ
-            playNext();                        // 次の曲へ
-        }
+      if (event.data === YT.PlayerState.ENDED) {
+        nextVideo();
+      }
     }
 
-    // 5. 次の曲へ進む処理
-    function playNext() {
-        // プレイヤーの準備ができていない、またはオブジェクトがない場合は処理をスキップ
-        if (!player || !isPlayerReady || typeof player.loadVideoById !== 'function') {
-            console.log('プレイヤーの準備がまだできていません。');
-            return;
-        }
-
-        currentTrack++;
-        if (currentTrack >= songs.length) {
-            currentTrack = 0; // 最後までいったら最初に戻る
-        }
-        
-        player.loadVideoById(songs[currentTrack].id);
-        updatePlaylistUI();
+    // 次の曲を再生する関数
+    function nextVideo() {
+      currentTrackIndex = (currentTrackIndex + 1) % playlist.length;
+      player.loadVideoById(playlist[currentTrackIndex]);
     }
 
-    // 6. localStorage を使ったカウント処理
-    function countView(videoId) {
-        let count = localStorage.getItem(videoId) ? parseInt(localStorage.getItem(videoId)) : 0;
-        count++;
-        localStorage.setItem(videoId, count);
+    // 前の曲を再生する関数
+    function prevVideo() {
+      currentTrackIndex = (currentTrackIndex - 1 + playlist.length) % playlist.length;
+      player.loadVideoById(playlist[currentTrackIndex]);
     }
-
-    // 7. 画面上のプレイリストと回数表示を更新する処理
-    function updatePlaylistUI() {
-        var listHtml = '';
-        songs.forEach((song, index) => {
-            let count = localStorage.getItem(song.id) ? localStorage.getItem(song.id) : 0;
-            let activeClass = (index === currentTrack) ? 'active' : '';
-            
-            listHtml += `<li class="${activeClass}">
-                <span>${song.title}</span>
-                <span class="count-badge">${count} 回再生</span>
-            </li>`;
-        });
-        document.getElementById('playlist-views').innerHTML = listHtml;
-    }
-
-    // 8. テスト用：カウントをすべて消去する機能
-    function clearCounts() {
-        if(confirm('すべての再生回数をリセットしますか？')) {
-            songs.forEach(song => localStorage.removeItem(song.id));
-            updatePlaylistUI();
-        }
-    }
-</script>
+  </script>
 
 </body>
 </html>
