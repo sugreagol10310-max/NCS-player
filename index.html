@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My Music Chart Master (Firebase & Backup)</title>
+  <title>My Music Chart Master (Tier & Direct Rank)</title>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
   <style>
@@ -20,33 +20,46 @@
     .track-info, .panel { background: #1e1e1e; padding: 15px; border-radius: 10px; }
     .track-title { font-size: 18px; font-weight: bold; color: #fff; margin-bottom: 8px; }
     .track-meta { font-size: 14px; color: #aaa; display: flex; gap: 15px; margin-bottom: 12px; }
-    .score-control { display: flex; align-items: center; gap: 10px; background: #2a2a2a; padding: 10px; border-radius: 8px; }
-    .score-display { font-size: 20px; font-weight: bold; color: #ffcc00; min-width: 80px; }
+    
+    /* ティア＆順位操作エリア */
+    .tier-control { display: flex; flex-direction: column; gap: 10px; background: #2a2a2a; padding: 12px; border-radius: 8px; }
+    .tier-display-box { display: flex; align-items: center; justify-content: space-between; }
+    .tier-badge { font-size: 18px; font-weight: bold; color: #ffcc00; }
+    .rank-move-box { display: flex; align-items: center; gap: 8px; margin-top: 5px; flex-wrap: wrap; }
+    .rank-input { width: 70px; padding: 6px; background: #121212; border: 1px solid #555; border-radius: 4px; color: #fff; text-align: center; }
+    
     .btn { padding: 6px 12px; background: #333; color: #fff; border: 1px solid #555; border-radius: 5px; cursor: pointer; }
+    .btn:hover { background: #444; }
+    .btn-action { background: #ff0055; border: none; font-weight: bold; }
     .nav-controls { display: flex; gap: 10px; margin-top: 10px; }
     .nav-btn { flex: 1; padding: 10px; background: #ff0055; color: #fff; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; }
+    
     .form-group { display: flex; flex-direction: column; gap: 8px; }
     .form-row { display: flex; gap: 10px; }
-    input { padding: 8px; background: #2a2a2a; border: 1px solid #444; border-radius: 5px; color: #fff; flex: 1; }
+    input, select { padding: 8px; background: #2a2a2a; border: 1px solid #444; border-radius: 5px; color: #fff; flex: 1; }
     .btn-add { background: #00aa55; color: #fff; border: none; padding: 10px; border-radius: 5px; font-weight: bold; cursor: pointer; }
     .backup-controls { display: flex; gap: 10px; }
     .btn-backup { flex: 1; padding: 8px; background: #3a3a3a; color: #ccc; border: 1px solid #555; border-radius: 5px; cursor: pointer; font-size: 13px; }
     .btn-backup:hover { background: #555; color: #fff; }
+    
     .right-panel { flex: 1 1 350px; background: #1e1e1e; border-radius: 10px; padding: 15px; max-height: 800px; display: flex; flex-direction: column; }
     .ranking-title { font-size: 16px; margin-bottom: 10px; color: #fff; border-bottom: 1px solid #333; padding-bottom: 5px; }
     .rank-list { list-style: none; overflow-y: auto; flex: 1; }
+    
+    /* ティア区切りヘッダー */
+    .tier-header { background: #2a1122; color: #ff0055; font-weight: bold; padding: 6px 10px; font-size: 12px; border-left: 4px solid #ff0055; margin-top: 8px; margin-bottom: 4px; }
     .rank-item { display: flex; align-items: center; padding: 8px 10px; border-bottom: 1px solid #2a2a2a; font-size: 14px; border-radius: 5px; cursor: pointer; }
     .rank-item.active { background: #331122; border: 1px solid #ff0055; }
     .rank-num { width: 40px; font-weight: bold; color: #888; }
     .rank-item.active .rank-num { color: #ff0055; }
     .rank-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 10px; }
-    .rank-score { font-weight: bold; color: #ffcc00; margin-right: 8px; }
+    .rank-tier-tag { font-size: 11px; background: #333; color: #ffcc00; padding: 2px 6px; border-radius: 3px; margin-right: 8px; font-weight: bold; }
     .rank-del-btn { background: transparent; border: none; color: #666; cursor: pointer; }
   </style>
 </head>
 <body>
 
-  <h1>🎵 My Music Chart Master (Firebaseリアルタイム同期)</h1>
+  <h1>🎵 My Music Chart Master (Tier System)</h1>
 
   <div class="mode-selector">
     <button class="mode-btn active" onclick="setMode('all', event)">全曲順</button>
@@ -64,13 +77,25 @@
           <span>👁 視聴: <span id="display-plays">0</span>回</span>
           <span>📅 年: <span id="display-year">-</span></span>
         </div>
-        <div class="score-control">
-          <span class="score-display">💯 <span id="display-score">0</span>点</span>
-          <button class="btn" onclick="changeScore(-5)">-5</button>
-          <button class="btn" onclick="changeScore(-1)">-1</button>
-          <button class="btn" onclick="changeScore(1)">+1</button>
-          <button class="btn" onclick="changeScore(5)">+5</button>
+        
+        <div class="tier-control">
+          <div class="tier-display-box">
+            <span>🏆 ランク: <span class="tier-badge" id="display-tier">-</span></span>
+            <div>
+              <label style="font-size:12px; color:#aaa;">ティア変更: </label>
+              <select id="select-tier" onchange="changeCurrentSongTier(this.value)" style="padding: 4px; font-size: 12px; flex:none; width: auto;">
+                </select>
+            </div>
+          </div>
+          <div class="rank-move-box">
+            <span style="font-size:13px; color:#aaa;">順位指定:</span>
+            <input type="number" id="input-direct-rank" class="rank-input" min="1" placeholder="位">
+            <button class="btn btn-action" onclick="moveCurrentSongToRank()">移動</button>
+            <button class="btn" onclick="moveCurrentSongStep(-1)">▲ 上へ</button>
+            <button class="btn" onclick="moveCurrentSongStep(1)">▼ 下へ</button>
+          </div>
         </div>
+
         <div class="nav-controls">
           <button class="nav-btn" onclick="prevSong()">前の曲</button>
           <button class="nav-btn" onclick="nextSong()">次の曲</button>
@@ -84,7 +109,8 @@
           <input type="text" id="input-ytid" placeholder="YouTube URL または ID">
           <div class="form-row">
             <input type="number" id="input-year" placeholder="年" value="2024">
-            <input type="number" id="input-score" placeholder="点数" value="80">
+            <select id="input-tier">
+              </select>
           </div>
           <button class="btn-add" onclick="addNewSong()">追加</button>
         </div>
@@ -108,7 +134,34 @@
 
   <script>
     // --------------------------------------------------
-    // 🔥 1. あなたのFirebase設定を貼り付けてください
+    // 🔥 ティア設定マスター定義
+    // --------------------------------------------------
+    const TIER_DEFINITIONS = [
+      { code: "SSSS", name: "So Masterpiece", minScore: 100 },
+      { code: "SS",   name: "Masterpiece",    minScore: 95 },
+      { code: "S+",   name: "Brilliant",      minScore: 90 },
+      { code: "S",    name: "Wonderful",      minScore: 80 },
+      { code: "A+",   name: "Great",          minScore: 70 },
+      { code: "A",    name: "Cool",           minScore: 60 },
+      { code: "B+",   name: "Good",           minScore: 50 },
+      { code: "B",    name: "Mid",            minScore: 40 },
+      { code: "C+",   name: "Not Bad",        minScore: 30 },
+      { code: "C",    name: "Meh",            minScore: 20 },
+      { code: "D",    name: "Uncool",         minScore: 10 },
+      { code: "E",    name: "Bad",            minScore: 5 },
+      { code: "F",    name: "Too Bad",        minScore: 0 }
+    ];
+
+    // スコア(旧データ)から初期ティアを自動変換する関数
+    function scoreToTierCode(score) {
+      for (let t of TIER_DEFINITIONS) {
+        if (score >= t.minScore) return t.code;
+      }
+      return "F";
+    }
+
+    // --------------------------------------------------
+    // 🔥 Firebase設定（ご自身のキーを入れてください）
     // --------------------------------------------------
     const firebaseConfig = {
       apiKey: "AIzaSyCNrw2H5gjO7Ai_eOJxuwe6UzeG06l_MFQ",
@@ -137,15 +190,43 @@
     let isCountedCurrentSong = false;
     let listenTimer = null;
 
+    // セレクトボックス初期化
+    function initTierSelects() {
+      const selectTier = document.getElementById('select-tier');
+      const inputTier = document.getElementById('input-tier');
+      selectTier.innerHTML = '';
+      inputTier.innerHTML = '';
+
+      TIER_DEFINITIONS.forEach(t => {
+        const opt = `<option value="${t.code}">${t.code} (${t.name})</option>`;
+        selectTier.innerHTML += opt;
+        inputTier.innerHTML += opt;
+      });
+      inputTier.value = "A+"; // デフォルト追加時のティア
+    }
+    initTierSelects();
+
     // 🔥 Firebaseからリアルタイム取得
     songsRef.on('value', (snapshot) => {
       const data = snapshot.val();
-      
-      // 現在再生中の曲のIDを記憶しておく
       const currentSongId = currentPlaylist[currentIndex] ? currentPlaylist[currentIndex].id : null;
 
       if (data) {
-        songs = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+        // 旧データ（scoreのみ）があれば互換性のためtierとorderを付与
+        let rawSongs = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+        
+        // 順位（order）が無い場合は、スコア順に順位を1, 2, 3...と付与
+        rawSongs.sort((a, b) => (b.score || 0) - (a.score || 0));
+        
+        songs = rawSongs.map((s, idx) => ({
+          id: s.id,
+          youtubeId: s.youtubeId,
+          title: s.title,
+          year: s.year || 2024,
+          playCount: s.playCount || 0,
+          tier: s.tier || scoreToTierCode(s.score || 80),
+          order: s.order !== undefined ? s.order : idx
+        }));
       } else {
         songs = [];
       }
@@ -153,16 +234,13 @@
       sortSongs();
       updatePlaylistByMode();
 
-      // 順位が変わっても現在選んでいる曲を追従する
       if (currentSongId) {
         const newIndex = currentPlaylist.findIndex(s => s.id === currentSongId);
-        if (newIndex !== -1) {
-          currentIndex = newIndex;
-        }
+        if (newIndex !== -1) currentIndex = newIndex;
       }
 
       renderRankingUI();
-      updateTrackInfoDisplay(); // UI上の数字を更新
+      updateTrackInfoDisplay();
 
       if (currentPlaylist.length > 0 && (!player || !player.getVideoData)) {
         loadCurrentSong();
@@ -171,16 +249,62 @@
 
     function saveAllToFirebase() {
       const dataObj = {};
-      songs.forEach(s => { dataObj[s.id] = s; });
+      songs.forEach((s, index) => {
+        s.order = index; // 現在の配列順をそのままorderとして保存
+        dataObj[s.id] = s;
+      });
       songsRef.set(dataObj);
     }
 
     function sortSongs() {
-      songs.sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        if (a.playCount !== b.playCount) return a.playCount - b.playCount;
-        return a.title.localeCompare(b.title, 'ja');
-      });
+      // order（順位）プロパティで昇降ソート
+      songs.sort((a, b) => a.order - b.order);
+      // 再番号付け
+      songs.forEach((s, i) => s.order = i);
+    }
+
+    // --------------------------------------------------
+    // 順位ダイレクト移動 ＆ ティア変更処理
+    // --------------------------------------------------
+    function changeCurrentSongTier(newTier) {
+      if (currentPlaylist.length === 0) return;
+      const song = currentPlaylist[currentIndex];
+      song.tier = newTier;
+      db.ref(`music_chart/songs/${song.id}/tier`).set(newTier);
+    }
+
+    function moveCurrentSongToRank() {
+      if (currentPlaylist.length === 0) return;
+      const targetInput = document.getElementById('input-direct-rank');
+      let targetRank = parseInt(targetInput.value);
+
+      if (isNaN(targetRank) || targetRank < 1 || targetRank > songs.length) {
+        return alert(`1〜${songs.length}位の間で指定してください。`);
+      }
+
+      const song = currentPlaylist[currentIndex];
+      const oldIndex = songs.findIndex(s => s.id === song.id);
+      const newIndex = targetRank - 1;
+
+      if (oldIndex !== -1) {
+        songs.splice(oldIndex, 1);
+        songs.splice(newIndex, 0, song);
+        saveAllToFirebase();
+        targetInput.value = '';
+      }
+    }
+
+    function moveCurrentSongStep(step) {
+      if (currentPlaylist.length === 0) return;
+      const song = currentPlaylist[currentIndex];
+      const oldIndex = songs.findIndex(s => s.id === song.id);
+      const newIndex = oldIndex + step;
+
+      if (newIndex >= 0 && newIndex < songs.length) {
+        songs.splice(oldIndex, 1);
+        songs.splice(newIndex, 0, song);
+        saveAllToFirebase();
+      }
     }
 
     // --------------------------------------------------
@@ -206,13 +330,15 @@
         try {
           const importedSongs = JSON.parse(e.target.result);
           if (Array.isArray(importedSongs)) {
-            if (confirm(`現在のデータを上書きし、${importedSongs.length}曲のデータをFirebaseへ一括登録（同期）しますか？`)) {
-              songs = importedSongs;
+            if (confirm(`現在のデータを上書きし、${importedSongs.length}曲のデータをFirebaseへ一括登録しますか？`)) {
+              songs = importedSongs.map((s, idx) => ({
+                ...s,
+                tier: s.tier || scoreToTierCode(s.score || 80),
+                order: idx
+              }));
               saveAllToFirebase();
-              alert('Firebaseへのデータ復元（同期）が完了しました！');
+              alert('Firebaseへのデータ復元が完了しました！');
             }
-          } else {
-            alert('ファイル形式が正しくありません。');
           }
         } catch (err) {
           alert('ファイルの読み込みに失敗しました。');
@@ -228,7 +354,7 @@
       const titleInput = document.getElementById('input-title');
       let ytidInput = document.getElementById('input-ytid').value.trim();
       const yearInput = document.getElementById('input-year');
-      const scoreInput = document.getElementById('input-score');
+      const tierInput = document.getElementById('input-tier');
 
       if (!titleInput.value.trim() || !ytidInput) return alert('入力してください');
 
@@ -241,8 +367,9 @@
         youtubeId: ytidInput,
         title: titleInput.value.trim(),
         year: parseInt(yearInput.value) || 2024,
-        score: Math.min(100, Math.max(0, parseInt(scoreInput.value) || 80)),
-        playCount: 0
+        tier: tierInput.value,
+        playCount: 0,
+        order: songs.length // 最下位に追加
       };
 
       db.ref(`music_chart/songs/${newId}`).set(newSong);
@@ -256,21 +383,6 @@
       if (confirm('削除しますか？')) {
         db.ref(`music_chart/songs/${id}`).remove();
       }
-    }
-
-    // 🔥 修正点1 & 2: 点数変更ロジック（IDで直接更新し、画面の数字も即書き換え）
-    function changeScore(delta) {
-      if (currentPlaylist.length === 0) return;
-      const currentSong = currentPlaylist[currentIndex];
-      
-      const newScore = Math.min(100, Math.max(0, currentSong.score + delta));
-      currentSong.score = newScore;
-
-      // 動画下の点数表示をその場で即時更新！
-      document.getElementById('display-score').innerText = newScore;
-
-      // Firebase上の該当曲のスコアを更新（IDで指定）
-      db.ref(`music_chart/songs/${currentSong.id}/score`).set(newScore);
     }
 
     function updatePlaylistByMode() {
@@ -298,7 +410,11 @@
         document.getElementById('display-title').innerText = song.title;
         document.getElementById('display-plays').innerText = song.playCount;
         document.getElementById('display-year').innerText = song.year;
-        document.getElementById('display-score').innerText = song.score;
+        
+        const tierObj = TIER_DEFINITIONS.find(t => t.code === song.tier) || { name: song.tier };
+        document.getElementById('display-tier').innerText = `${song.tier} (${tierObj.name})`;
+        document.getElementById('select-tier').value = song.tier;
+        document.getElementById('input-direct-rank').placeholder = `${song.order + 1}位`;
       }
     }
 
@@ -320,7 +436,19 @@
       listEl.innerHTML = '';
       const currentSong = currentPlaylist[currentIndex];
 
+      let lastTier = null;
+
       songs.forEach((song, index) => {
+        // ティアが変わったタイミングで見出しヘッダーを挿入
+        if (song.tier !== lastTier) {
+          const tierObj = TIER_DEFINITIONS.find(t => t.code === song.tier);
+          const header = document.createElement('li');
+          header.className = 'tier-header';
+          header.innerText = `--- 🏆 Tier ${song.tier} : ${tierObj ? tierObj.name : ''} ---`;
+          listEl.appendChild(header);
+          lastTier = song.tier;
+        }
+
         const li = document.createElement('li');
         li.className = 'rank-item';
         if (currentSong && song.id === currentSong.id) li.classList.add('active');
@@ -332,15 +460,15 @@
 
         li.innerHTML = `
           <span class="rank-num">${index + 1}位</span>
+          <span class="rank-tier-tag">${song.tier}</span>
           <span class="rank-name">${song.title}</span>
-          <span class="rank-score">${song.score}pt</span>
           <button class="rank-del-btn" onclick="deleteSong('${song.id}', event)">✕</button>
         `;
         listEl.appendChild(li);
       });
     }
 
-    // 実再生時間30%計測ロジック
+    // 30%再生タイマー処理
     function onPlayerStateChange(event) {
       if (event.data === YT.PlayerState.PLAYING) startListeningTimer();
       else stopListeningTimer();
