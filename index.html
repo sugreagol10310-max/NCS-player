@@ -3,117 +3,335 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>マイソング プレイヤー</title>
+  <title>My Music Chart Master</title>
   <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: Arial, sans-serif;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
       background-color: #121212;
-      color: #ffffff;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+      color: #e0e0e0;
       padding: 20px;
     }
     h1 {
-      font-size: 24px;
+      text-align: center;
       margin-bottom: 20px;
+      font-size: 22px;
+      color: #ffffff;
     }
-    #player-container {
+    
+    /* モード選択エリア */
+    .mode-selector {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .mode-btn {
+      padding: 8px 16px;
+      background-color: #2a2a2a;
+      color: #fff;
+      border: 1px solid #444;
+      border-radius: 20px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: 0.2s;
+    }
+    .mode-btn:hover, .mode-btn.active {
+      background-color: #ff0055;
+      border-color: #ff0055;
+    }
+
+    /* メインレイアウト（2カラム） */
+    .main-container {
+      display: flex;
+      gap: 20px;
+      max-width: 1100px;
+      margin: 0 auto;
+      flex-wrap: wrap;
+    }
+
+    /* 左ウィンドウ：プレイヤー＆操作エリア */
+    .left-panel {
+      flex: 1 1 500px;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+    .player-wrapper {
       position: relative;
       width: 100%;
-      max-width: 640px;
       aspect-ratio: 16 / 9;
+      background: #000;
+      border-radius: 10px;
+      overflow: hidden;
     }
-    iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
+    iframe { width: 100%; height: 100%; border: none; }
+
+    .track-info {
+      background: #1e1e1e;
+      padding: 15px;
       border-radius: 10px;
     }
-    .controls {
-      margin-top: 15px;
+    .track-title { font-size: 18px; font-weight: bold; color: #fff; margin-bottom: 8px; }
+    .track-meta { font-size: 14px; color: #aaa; display: flex; gap: 15px; margin-bottom: 12px; }
+
+    /* スコア変更コントロール */
+    .score-control {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #2a2a2a;
+      padding: 10px;
+      border-radius: 8px;
+    }
+    .score-display { font-size: 20px; font-weight: bold; color: #ffcc00; min-width: 80px; }
+    .btn {
+      padding: 6px 12px;
+      background: #333;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .btn:hover { background: #555; }
+    
+    .nav-controls {
       display: flex;
       gap: 10px;
+      margin-top: 10px;
     }
-    button {
-      padding: 10px 20px;
-      font-size: 16px;
+    .nav-btn {
+      flex: 1;
+      padding: 10px;
+      background: #ff0055;
+      color: #fff;
       border: none;
       border-radius: 5px;
-      background-color: #ff0000;
-      color: white;
+      font-weight: bold;
       cursor: pointer;
-      transition: background-color 0.2s;
     }
-    button:hover {
-      background-color: #cc0000;
+
+    /* 右ウィンドウ：ランキングプレビュー */
+    .right-panel {
+      flex: 1 1 350px;
+      background: #1e1e1e;
+      border-radius: 10px;
+      padding: 15px;
+      max-height: 550px;
+      overflow-y: auto;
     }
+    .ranking-title { font-size: 16px; margin-bottom: 10px; color: #fff; border-bottom: 1px solid #333; padding-bottom: 5px; }
+    .rank-list { list-style: none; }
+    .rank-item {
+      display: flex;
+      align-items: center;
+      padding: 8px 10px;
+      border-bottom: 1px solid #2a2a2a;
+      font-size: 14px;
+      border-radius: 5px;
+    }
+    .rank-item.active {
+      background: #331122;
+      border: 1px solid #ff0055;
+    }
+    .rank-num { width: 40px; font-weight: bold; color: #888; }
+    .rank-item.active .rank-num { color: #ff0055; }
+    .rank-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 10px; }
+    .rank-score { font-weight: bold; color: #ffcc00; }
   </style>
 </head>
 <body>
 
-  <h1>🎵 マイプレイリスト プレイヤー</h1>
+  <h1>🎵 My Music Chart Master</h1>
 
-  <div id="player-container">
-    <div id="player"></div>
+  <div class="mode-selector">
+    <button class="mode-btn active" onclick="setMode('all')">全曲順</button>
+    <button class="mode-btn" onclick="setMode('top20')">TOP 20</button>
+    <button class="mode-btn" onclick="setMode('bottom')">育成（下位シャッフル）</button>
   </div>
 
-  <div class="controls">
-    <button onclick="prevVideo()">前の曲</button>
-    <button onclick="nextVideo()">次の曲</button>
+  <div class="main-container">
+    <div class="left-panel">
+      <div class="player-wrapper">
+        <div id="player"></div>
+      </div>
+
+      <div class="track-info">
+        <div class="track-title" id="display-title">-</div>
+        <div class="track-meta">
+          <span>👁 視聴回数: <span id="display-plays">0</span>回</span>
+          <span>📅 発表年: <span id="display-year">-</span>年</span>
+        </div>
+
+        <div class="score-control">
+          <span class="score-display">💯 <span id="display-score">0</span>点</span>
+          <button class="btn" onclick="changeScore(-5)">-5</button>
+          <button class="btn" onclick="changeScore(-1)">-1</button>
+          <button class="btn" onclick="changeScore(1)">+1</button>
+          <button class="btn" onclick="changeScore(5)">+5</button>
+        </div>
+
+        <div class="nav-controls">
+          <button class="nav-btn" onclick="prevSong()">前の曲</button>
+          <button class="nav-btn" onclick="nextSong()">次の曲</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="right-panel">
+      <div class="ranking-title">🏆 リアルタイムランキング</div>
+      <ul class="rank-list" id="rank-list"></ul>
+    </div>
   </div>
 
   <script>
-    // 1. 好きなYouTube動画の「動画ID」を配列に指定します
-    // ※ 動画URLの「v=XXXXXX」の「XXXXXX」の部分です
-    const playlist = [
-      'dQw4w9WgXcQ', // 曲1の動画ID
-      'kJQP7kiw5Fk', // 曲2の動画ID
-      'fJ9rUzIMcZQ'  // 曲3の動画ID
+    // サンプルデータ（200曲中、テスト用データ）
+    // ※ 好きな曲のID・タイトル・リリース年に書き換えてお使いください
+    let songs = [
+      { id: "1", youtubeId: "dQw4w9WgXcQ", title: "Never Gonna Give You Up", year: 1987, score: 85, playCount: 5 },
+      { id: "2", youtubeId: "kJQP7kiw5Fk", title: "Despacito", year: 2017, score: 90, playCount: 12 },
+      { id: "3", youtubeId: "fJ9rUzIMcZQ", title: "Bohemian Rhapsody", year: 1975, score: 95, playCount: 20 },
+      { id: "4", youtubeId: "L_jWHffIx5E", title: "Smells Like Teen Spirit", year: 1991, score: 85, playCount: 2 }, // 同点テスト用（再生数少ない方が上）
+      { id: "5", youtubeId: "3tmd-ClpJxA", title: "Payphone", year: 2012, score: 78, playCount: 1 }
     ];
 
-    let currentTrackIndex = 0;
+    let currentPlaylist = [];
+    let currentIndex = 0;
     let player;
 
-    // 2. YouTube IFrame Player APIの読み込み
+    // LocalStorageからデータを復元（データがあれば上書き）
+    if (localStorage.getItem('myMusicChartData')) {
+      songs = JSON.parse(localStorage.getItem('myMusicChartData'));
+    }
+
+    // ランキングソートロジック
+    // 1. 得点（降順） -> 2. 再生回数（昇順） -> 3. タイトル（五十音/アルファベット順）
+    function sortSongs() {
+      songs.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        if (a.playCount !== b.playCount) return a.playCount - b.playCount;
+        return a.title.localeCompare(b.title, 'ja');
+      });
+      saveData();
+    }
+
+    function saveData() {
+      localStorage.setItem('myMusicChartData', JSON.stringify(songs));
+    }
+
+    // 再生モードの切り替え
+    function setMode(mode) {
+      document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+      event.target.classList.add('active');
+
+      sortSongs();
+      if (mode === 'top20') {
+        currentPlaylist = songs.slice(0, 20);
+      } else if (mode === 'bottom') {
+        // 下位半分を抽出してシャッフル
+        let bottomHalf = songs.slice(Math.floor(songs.length / 2));
+        currentPlaylist = bottomHalf.sort(() => Math.random() - 0.5);
+      } else {
+        currentPlaylist = [...songs];
+      }
+      
+      currentIndex = 0;
+      loadCurrentSong();
+    }
+
+    // 現在の曲を画面＆プレイヤーに反映
+    function loadCurrentSong() {
+      if (currentPlaylist.length === 0) return;
+      const song = currentPlaylist[currentIndex];
+
+      // 情報更新
+      document.getElementById('display-title').innerText = song.title;
+      document.getElementById('display-plays').innerText = song.playCount;
+      document.getElementById('display-year').innerText = song.year;
+      document.getElementById('display-score').innerText = song.score;
+
+      // ランキング表示の更新
+      renderRankingUI();
+
+      // 動画再生
+      if (player && player.loadVideoById) {
+        player.loadVideoById(song.youtubeId);
+      }
+    }
+
+    // 得点の変更処理（リアルタイム順位付け）
+    function changeScore(delta) {
+      const song = currentPlaylist[currentIndex];
+      song.score = Math.min(100, Math.max(0, song.score + delta)); // 0〜100に制限
+      document.getElementById('display-score').innerText = song.score;
+
+      sortSongs();
+      renderRankingUI();
+    }
+
+    // 右側のランキングUIを描画
+    function renderRankingUI() {
+      sortSongs();
+      const listEl = document.getElementById('rank-list');
+      listEl.innerHTML = '';
+
+      const currentSong = currentPlaylist[currentIndex];
+
+      songs.forEach((song, index) => {
+        const li = document.createElement('li');
+        li.className = 'rank-item';
+        if (currentSong && song.id === currentSong.id) {
+          li.classList.add('active');
+        }
+
+        li.innerHTML = `
+          <span class="rank-num">${index + 1}位</span>
+          <span class="rank-name">${song.title}</span>
+          <span class="rank-score">${song.score}pt</span>
+        `;
+        listEl.appendChild(li);
+      });
+    }
+
+    // YouTube APIの読み込み
     const tag = document.createElement('script');
     tag.src = "https://www.youtube.com/iframe_api";
-    const firstScriptTag = document.getElementsByTagName('script')[0];
-    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+    document.getElementsByTagName('script')[0].parentNode.insertBefore(tag, document.getElementsByTagName('script')[0]);
 
-    // 3. プレイヤーの初期化
     function onYouTubeIframeAPIReady() {
+      sortSongs();
+      currentPlaylist = [...songs];
+      
       player = new YT.Player('player', {
-        videoId: playlist[currentTrackIndex],
-        playerVars: {
-          'playsinline': 1,
-          'autoplay': 0
-        },
+        videoId: currentPlaylist[0].youtubeId,
+        playerVars: { 'playsinline': 1 },
         events: {
+          'onReady': () => loadCurrentSong(),
           'onStateChange': onPlayerStateChange
         }
       });
     }
 
-    // 4. 曲が終わったら自動で次の曲へ移行
+    // 曲が終わったらカウントアップして次の曲へ
     function onPlayerStateChange(event) {
       if (event.data === YT.PlayerState.ENDED) {
-        nextVideo();
+        const song = currentPlaylist[currentIndex];
+        song.playCount++;
+        saveData();
+        nextSong();
       }
     }
 
-    // 次の曲を再生する関数
-    function nextVideo() {
-      currentTrackIndex = (currentTrackIndex + 1) % playlist.length;
-      player.loadVideoById(playlist[currentTrackIndex]);
+    function nextSong() {
+      currentIndex = (currentIndex + 1) % currentPlaylist.length;
+      loadCurrentSong();
     }
 
-    // 前の曲を再生する関数
-    function prevVideo() {
-      currentTrackIndex = (currentTrackIndex - 1 + playlist.length) % playlist.length;
-      player.loadVideoById(playlist[currentTrackIndex]);
+    function prevSong() {
+      currentIndex = (currentIndex - 1 + currentPlaylist.length) % currentPlaylist.length;
+      loadCurrentSong();
     }
   </script>
-
 </body>
 </html>
