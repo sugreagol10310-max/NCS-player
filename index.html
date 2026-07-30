@@ -95,8 +95,6 @@
       cursor: pointer;
     }
     .btn:hover { background: #555; }
-    .btn-danger { background: #880000; border-color: #aa0000; }
-    .btn-danger:hover { background: #cc0000; }
     
     .nav-controls {
       display: flex;
@@ -114,13 +112,14 @@
       cursor: pointer;
     }
 
-    /* 楽曲追加フォームのエリア */
-    .add-song-panel {
+    /* パネル共通スタイル */
+    .panel {
       background: #1e1e1e;
       padding: 15px;
       border-radius: 10px;
     }
     .panel-title { font-size: 16px; font-weight: bold; margin-bottom: 10px; color: #fff; }
+    
     .form-group {
       display: flex;
       flex-direction: column;
@@ -149,13 +148,30 @@
     }
     .btn-add:hover { background: #00cc66; }
 
+    /* バックアップコントロール */
+    .backup-controls {
+      display: flex;
+      gap: 10px;
+    }
+    .btn-backup {
+      flex: 1;
+      padding: 8px;
+      background: #3a3a3a;
+      color: #ccc;
+      border: 1px solid #555;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .btn-backup:hover { background: #555; color: #fff; }
+
     /* 右ウィンドウ：ランキングプレビュー */
     .right-panel {
       flex: 1 1 350px;
       background: #1e1e1e;
       border-radius: 10px;
       padding: 15px;
-      max-height: 750px;
+      max-height: 800px;
       display: flex;
       flex-direction: column;
     }
@@ -168,6 +184,7 @@
       border-bottom: 1px solid #2a2a2a;
       font-size: 14px;
       border-radius: 5px;
+      cursor: pointer;
     }
     .rank-item.active {
       background: #331122;
@@ -224,7 +241,7 @@
         </div>
       </div>
 
-      <div class="add-song-panel">
+      <div class="panel">
         <div class="panel-title">➕ 楽曲を追加する</div>
         <div class="form-group">
           <input type="text" id="input-title" placeholder="タイトル（例: Simple Song）">
@@ -234,6 +251,15 @@
             <input type="number" id="input-score" placeholder="初期点数" value="80" min="0" max="100">
           </div>
           <button class="btn-add" onclick="addNewSong()">リストに追加</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">💾 データ管理（バックアップ）</div>
+        <div class="backup-controls">
+          <button class="btn-backup" onclick="exportData()">バックアップを保存 (.json)</button>
+          <button class="btn-backup" onclick="document.getElementById('import-file').click()">復元 (ファイルを読み込み)</button>
+          <input type="file" id="import-file" accept=".json" style="display: none;" onchange="importData(event)">
         </div>
       </div>
     </div>
@@ -257,12 +283,22 @@
     let player;
     let currentMode = 'all';
 
+    // 視聴計測用変数（実再生時間の積み上げタイマー）
+    let listenedSeconds = 0;
+    let isCountedCurrentSong = false;
+    let listenTimer = null;
+
     // LocalStorageからデータを復元
     if (localStorage.getItem('myMusicChartData')) {
-      songs = JSON.parse(localStorage.getItem('myMusicChartData'));
+      try {
+        songs = JSON.parse(localStorage.getItem('myMusicChartData'));
+      } catch (e) {
+        console.error("データの読み込みエラー", e);
+      }
     }
 
     // ランキングソートロジック
+    // 1. 得点（降順） -> 2. 再生回数（昇順） -> 3. タイトル（五十音/アルファベット順）
     function sortSongs() {
       songs.sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
@@ -288,7 +324,7 @@
         return;
       }
 
-      // URLが貼られた場合は「v=XXXXX」のID部分だけを抽出
+      // URL補正（通常URL / 共有URLからIDのみ取得）
       if (ytidInput.includes('v=')) {
         ytidInput = ytidInput.split('v=')[1].split('&')[0];
       } else if (ytidInput.includes('youtu.be/')) {
@@ -307,11 +343,9 @@
       songs.push(newSong);
       sortSongs();
 
-      // フォームリセット
       titleInput.value = '';
       document.getElementById('input-ytid').value = '';
 
-      // プレイリスト更新＆画面描画
       updatePlaylistByMode();
       renderRankingUI();
 
@@ -320,7 +354,7 @@
 
     // 曲を削除する機能
     function deleteSong(id, event) {
-      event.stopPropagation(); // 行クリックイベントを防止
+      event.stopPropagation();
       if (confirm('この曲をランキングから削除しますか？')) {
         songs = songs.filter(s => s.id !== id);
         sortSongs();
@@ -370,6 +404,9 @@
       document.getElementById('display-year').innerText = song.year;
       document.getElementById('display-score').innerText = song.score;
 
+      // カウントタイマー＆計測時間を初期化
+      resetListenTimer();
+
       renderRankingUI();
 
       if (player && player.loadVideoById) {
@@ -403,7 +440,6 @@
           li.classList.add('active');
         }
 
-        // クリックしたらその曲を直接再生できる機能
         li.onclick = () => {
           let idx = currentPlaylist.findIndex(s => s.id === song.id);
           if (idx !== -1) {
@@ -422,7 +458,102 @@
       });
     }
 
-    // YouTube APIの読み込み
+    // ----------------------------------------------------
+    // 改良版 視聴カウント計測ロジック（実際の再生秒数を積算）
+    // ----------------------------------------------------
+    function onPlayerStateChange(event) {
+      if (event.data === YT.PlayerState.PLAYING) {
+        startListeningTimer();
+      } else {
+        stopListeningTimer();
+      }
+
+      if (event.data === YT.PlayerState.ENDED) {
+        nextSong();
+      }
+    }
+
+    function startListeningTimer() {
+      stopListeningTimer();
+
+      listenTimer = setInterval(() => {
+        if (!player || !player.getDuration || isCountedCurrentSong) return;
+
+        const duration = player.getDuration();
+        if (duration <= 0) return;
+
+        // 実際の再生時間を1秒加算
+        listenedSeconds++;
+
+        // 「実再生時間 ÷ 曲長」が 30% (0.3) を超えたらカウント！
+        if ((listenedSeconds / duration) >= 0.3) {
+          const song = currentPlaylist[currentIndex];
+          song.playCount++;
+          isCountedCurrentSong = true;
+
+          saveData();
+          document.getElementById('display-plays').innerText = song.playCount;
+          sortSongs();
+          renderRankingUI();
+
+          stopListeningTimer();
+        }
+      }, 1000);
+    }
+
+    function stopListeningTimer() {
+      if (listenTimer) {
+        clearInterval(listenTimer);
+        listenTimer = null;
+      }
+    }
+
+    function resetListenTimer() {
+      stopListeningTimer();
+      listenedSeconds = 0;
+      isCountedCurrentSong = false;
+    }
+
+    // ----------------------------------------------------
+    // バックアップ (JSON書き出し & 復元)
+    // ----------------------------------------------------
+    function exportData() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(songs, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `music_chart_backup_${new Date().toISOString().slice(0,10)}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+
+    function importData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const importedSongs = JSON.parse(e.target.result);
+          if (Array.isArray(importedSongs)) {
+            songs = importedSongs;
+            sortSongs();
+            updatePlaylistByMode();
+            loadCurrentSong();
+            alert('データを正常に復元しました！');
+          } else {
+            alert('ファイル形式が正しくありません。');
+          }
+        } catch (err) {
+          alert('ファイルの読み込みに失敗しました。');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    // ----------------------------------------------------
+    // YouTube APIの読み込みとプレイヤー初期化
+    // ----------------------------------------------------
     const tag = document.createElement('script');
     tag.src = "https://www.youtube.com/iframe_api";
     document.getElementsByTagName('script')[0].parentNode.insertBefore(tag, document.getElementsByTagName('script')[0]);
@@ -439,15 +570,6 @@
           'onStateChange': onPlayerStateChange
         }
       });
-    }
-
-    function onPlayerStateChange(event) {
-      if (event.data === YT.PlayerState.ENDED) {
-        const song = currentPlaylist[currentIndex];
-        song.playCount++;
-        saveData();
-        nextSong();
-      }
     }
 
     function nextSong() {
