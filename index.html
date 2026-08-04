@@ -344,11 +344,18 @@
     // --------------------------------------------------
     // 🕒 毎日 0:00 自動バックアップ ＆ 過去ログ取得
     // --------------------------------------------------
-    function checkAndSaveDailyHistory() {
-      if (songs.length === 0) return;
-      const now = new Date();
-      const dateStr = now.toISOString().split('T')[0];
+    // --------------------------------------------------
+    // 🕒 毎日 0:00 自動バックアップ処理（修正版）
+    // --------------------------------------------------
+    let isSavingSnapshot = false; // 重複保存防止フラグ
     
+    function checkAndSaveDailyHistory() {
+      if (songs.length === 0 || isSavingSnapshot) return;
+    
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0]; // "YYYY-MM-DD"
+    
+      // 既に今日(YYYY-MM-DD)のデータが存在するか確認
       historyRef.child(dateStr).once('value', (snapshot) => {
         if (!snapshot.exists()) {
           saveDailySnapshot(dateStr);
@@ -357,6 +364,9 @@
     }
     
     function saveDailySnapshot(dateStr) {
+      if (isSavingSnapshot) return;
+      isSavingSnapshot = true;
+    
       const snapshotData = {
         timestamp: firebase.database.ServerValue.TIMESTAMP,
         songs: {}
@@ -375,8 +385,73 @@
         };
       });
     
-      historyRef.child(dateStr).set(snapshotData);
+      // 1日1回の指定日付(dateStr)キー配下へ書き込み
+      historyRef.child(dateStr).set(snapshotData, (error) => {
+        isSavingSnapshot = false;
+        if (!error) {
+          console.log(`[0:00 Backup] ${dateStr} のデータを正常に保存しました。`);
+        }
+      });
     }
+    
+    // --------------------------------------------------
+    // 🔥 Firebaseリアルタイム受信の修正
+    // --------------------------------------------------
+    songsRef.on('value', (snapshot) => {
+      const data = snapshot.val();
+      const currentSongId = currentPlaylist[currentIndex] ? currentPlaylist[currentIndex].id : null;
+    
+      if (data) {
+        let rawSongs = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+        rawSongs.sort((a, b) => (b.score || 0) - (a.score || 0));
+        
+        songs = rawSongs.map((s, idx) => {
+          const duration = s.duration || 200;
+          const playCount = s.playCount || 0;
+          
+          let totalWatchTime = s.totalWatchTime;
+          if (totalWatchTime === undefined || totalWatchTime === null) {
+            const effectivePlays = playCount > 0 ? playCount : 1;
+            totalWatchTime = Math.round(duration * 0.5 * effectivePlays);
+          }
+    
+          return {
+            id: s.id,
+            youtubeId: s.youtubeId,
+            title: s.title,
+            year: s.year || 2024,
+            playCount: playCount,
+            duration: duration,
+            totalWatchTime: totalWatchTime,
+            tier: s.tier || scoreToTierCode(s.score || 80),
+            order: s.order !== undefined ? s.order : idx
+          };
+        });
+      } else {
+        songs = [];
+      }
+    
+      sortSongs();
+    
+      fetchPastHistory(() => {
+        updatePlaylistByMode();
+    
+        if (currentSongId) {
+          const newIndex = currentPlaylist.findIndex(s => s.id === currentSongId);
+          if (newIndex !== -1) currentIndex = newIndex;
+        }
+    
+        renderRankingUI();
+        updateTrackInfoDisplay();
+    
+        if (currentPlaylist.length > 0 && (!player || !player.getVideoData)) {
+          loadCurrentSong();
+        }
+    
+        // 🔥 毎回保存するのではなく「今日の日付データが無ければ保存」のチェックのみ行う
+        checkAndSaveDailyHistory();
+      });
+    });
     
     function fetchPastHistory(callback) {
       historyRef.once('value', (snapshot) => {
