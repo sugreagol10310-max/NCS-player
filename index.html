@@ -67,7 +67,8 @@
     <button class="mode-btn active" onclick="setMode('all', event)">全曲順</button>
     <button class="mode-btn" onclick="setMode('top20', event)">TOP 20</button>
     <button class="mode-btn" onclick="setMode('bottom', event)">育成</button>
-    <button class="mode-btn" onclick="setMode('playCount', event)">再生回数</button> 
+    <button class="mode-btn" onclick="setMode('playCount', event)">再生回数</button>
+    <button class="mode-btn" onclick="setMode('trending', event)">急上昇</button>
   </div>
 
   <div class="main-container">
@@ -146,7 +147,7 @@
   </div>
 
   <script>
-    // --------------------------------------------------
+   // --------------------------------------------------
     // 🔥 ティア設定マスター定義
     // --------------------------------------------------
     const TIER_DEFINITIONS = [
@@ -188,7 +189,7 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     const songsRef = db.ref('music_chart/songs');
-    const historyRef = db.ref('music_chart/daily_history'); // 🔥 履歴保存用参照
+    const historyRef = db.ref('music_chart/daily_history');
     
     // --------------------------------------------------
     // アプリ変数
@@ -202,8 +203,10 @@
     let listenedSeconds = 0;
     let isCountedCurrentSong = false;
     let listenTimer = null;
-    
     let isManualSelection = false; 
+    
+    // 🔥 1週間前（または最も近い過去）の履歴データをキャッシュする変数
+    let pastSnapshotData = null;
     
     function initTierSelects() {
       const selectTier = document.getElementById('select-tier');
@@ -257,22 +260,25 @@
       }
     
       sortSongs();
-      updatePlaylistByMode();
     
-      if (currentSongId) {
-        const newIndex = currentPlaylist.findIndex(s => s.id === currentSongId);
-        if (newIndex !== -1) currentIndex = newIndex;
-      }
+      // 🔥 過去ログ（約1週間前）をロードしてからUI描画
+      fetchPastHistory(() => {
+        updatePlaylistByMode();
     
-      renderRankingUI();
-      updateTrackInfoDisplay();
+        if (currentSongId) {
+          const newIndex = currentPlaylist.findIndex(s => s.id === currentSongId);
+          if (newIndex !== -1) currentIndex = newIndex;
+        }
     
-      if (currentPlaylist.length > 0 && (!player || !player.getVideoData)) {
-        loadCurrentSong();
-      }
+        renderRankingUI();
+        updateTrackInfoDisplay();
     
-      // 起動・更新時に毎日0時の保存チェックを実行
-      checkAndSaveDailyHistory();
+        if (currentPlaylist.length > 0 && (!player || !player.getVideoData)) {
+          loadCurrentSong();
+        }
+    
+        checkAndSaveDailyHistory();
+      });
     });
     
     function saveAllToFirebase() {
@@ -296,15 +302,13 @@
     }
     
     // --------------------------------------------------
-    // 🕒 毎日 0:00 自動バックアップ（履歴保存）処理
+    // 🕒 毎日 0:00 自動バックアップ ＆ 過去ログ取得
     // --------------------------------------------------
     function checkAndSaveDailyHistory() {
       if (songs.length === 0) return;
-    
       const now = new Date();
-      const dateStr = now.toISOString().split('T')[0]; // "YYYY-MM-DD" フォーマット
+      const dateStr = now.toISOString().split('T')[0];
     
-      // 当日のデータが既に存在するか確認
       historyRef.child(dateStr).once('value', (snapshot) => {
         if (!snapshot.exists()) {
           saveDailySnapshot(dateStr);
@@ -318,7 +322,7 @@
         songs: {}
       };
     
-      songs.forEach(song => {
+      songs.forEach((song, idx) => {
         snapshotData.songs[song.id] = {
           title: song.title,
           playCount: song.playCount,
@@ -326,18 +330,57 @@
           duration: song.duration,
           retentionRate: Math.round(getRetentionRate(song)),
           tier: song.tier,
-          order: song.order
+          order: song.order,
+          rank: idx + 1 // 🔥 好きな順（ランキング順位）も保存
         };
       });
     
-      historyRef.child(dateStr).set(snapshotData, (error) => {
-        if (!error) {
-          console.log(`[Auto Backup] ${dateStr} の視聴統計データをFirebaseへ保存しました！`);
+      historyRef.child(dateStr).set(snapshotData);
+    }
+    
+    // --------------------------------------------------
+    // 🕒 過去ログ取得（1週間前・およびフォールバック条件の判定）
+    // --------------------------------------------------
+    function fetchPastHistory(callback) {
+      historyRef.once('value', (snapshot) => {
+        const historyData = snapshot.val();
+        pastSnapshotData = null;
+    
+        if (historyData) {
+          const dates = Object.keys(historyData).sort(); // 昇順ソート (古い順)
+          const todayStr = new Date().toISOString().split('T')[0];
+    
+          // 今日以外の過去のアーカイブ一覧を取得
+          const validPastDates = dates.filter(d => d < todayStr);
+    
+          if (validPastDates.length > 0) {
+            // 7日前の日付文字列を作成 (例: 8/8 なら 8/1)
+            const pastTargetDate = new Date();
+            pastTargetDate.setDate(pastTargetDate.getDate() - 7);
+            const targetStr = pastTargetDate.toISOString().split('T')[0];
+    
+            // 1. 7日前以前（7日前を含む）のアーカイブを探す
+            const olderDates = validPastDates.filter(d => d <= targetStr);
+    
+            let chosenDate = null;
+    
+            if (olderDates.length > 0) {
+              // 🔥 7日前以前に存在する場合：その中で「最も新しいアーカイブ」を採用
+              chosenDate = olderDates[olderDates.length - 1];
+            } else {
+              // 🔥 7日前以前に存在しない場合：全体で「最も古いアーカイブ」を採用
+              chosenDate = validPastDates[0];
+            }
+    
+            if (chosenDate) {
+              pastSnapshotData = historyData[chosenDate]?.songs || null;
+            }
+          }
         }
+        if (callback) callback();
       });
     }
     
-    // 0:00:00 のタイミングをミリ秒で計算してスケジュールセットするタイマー
     function scheduleMidnightTask() {
       const now = new Date();
       const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
@@ -346,14 +389,13 @@
       setTimeout(() => {
         const todayStr = new Date().toISOString().split('T')[0];
         saveDailySnapshot(todayStr);
-        // 翌日分を再スケジュール
         scheduleMidnightTask();
       }, msToMidnight);
     }
-    scheduleMidnightTask(); // タイマースタート
+    scheduleMidnightTask();
     
     // --------------------------------------------------
-    // モード選択とソート処理
+    // 🔥 モード選択とソート処理（「急上昇」タブ含む）
     // --------------------------------------------------
     function updatePlaylistByMode() {
       if (currentMode === 'top20') {
@@ -362,14 +404,30 @@
         currentPlaylist = songs.slice(Math.floor(songs.length / 2)).sort(() => Math.random() - 0.5);
       } else if (currentMode === 'playCount') {
         currentPlaylist = [...songs].sort((a, b) => {
-          if (b.playCount !== a.playCount) {
-            return b.playCount - a.playCount;
-          }
+          if (b.playCount !== a.playCount) return b.playCount - a.playCount;
           const retA = getRetentionRate(a);
           const retB = getRetentionRate(b);
-          if (retB !== retA) {
-            return retB - retA;
-          }
+          if (retB !== retA) return retB - retA;
+          return a.title.localeCompare(b.title, 'en', { sensitivity: 'base' });
+        });
+      } else if (currentMode === 'trending') {
+        // 🔥 直近急上昇ランキングのソート処理
+        currentPlaylist = [...songs].sort((a, b) => {
+          const pastA = pastSnapshotData ? (pastSnapshotData[a.id]?.playCount || 0) : 0;
+          const pastB = pastSnapshotData ? (pastSnapshotData[b.id]?.playCount || 0) : 0;
+          
+          const diffA = a.playCount - pastA;
+          const diffB = b.playCount - pastB;
+    
+          // 1. 増加数の多さ
+          if (diffB !== diffA) return diffB - diffA;
+          // 2. 通算再生回数
+          if (b.playCount !== a.playCount) return b.playCount - a.playCount;
+          // 3. 完聴率
+          const retA = getRetentionRate(a);
+          const retB = getRetentionRate(b);
+          if (retB !== retA) return retB - retA;
+          // 4. ABC順
           return a.title.localeCompare(b.title, 'en', { sensitivity: 'base' });
         });
       } else {
@@ -542,7 +600,7 @@
     function resetListenTimer() { stopListeningTimer(); listenedSeconds = 0; isCountedCurrentSong = false; }
     
     // --------------------------------------------------
-    // 🖼️ ランキングUI描画（再生回数表示対応）
+    // 🖼️ ランキングUI描画（変動・急上昇表示対応）
     // --------------------------------------------------
     function renderRankingUI() {
       const listEl = document.getElementById('rank-list');
@@ -550,10 +608,11 @@
       const currentSong = currentPlaylist[currentIndex];
     
       let lastTier = null;
-      const targetList = (currentMode === 'playCount') ? currentPlaylist : songs;
+      const targetList = (currentMode === 'playCount' || currentMode === 'trending') ? currentPlaylist : songs;
     
       targetList.forEach((song, index) => {
-        if (currentMode !== 'playCount' && song.tier !== lastTier) {
+        // ティアヘッダー（通常モードのみ）
+        if (currentMode !== 'playCount' && currentMode !== 'trending' && song.tier !== lastTier) {
           const tierObj = TIER_DEFINITIONS.find(t => t.code === song.tier);
           const header = document.createElement('li');
           header.className = 'tier-header';
@@ -575,11 +634,37 @@
           }
         };
     
-        // 🔥 再生回数タブの時だけ右側に「👀 回数 | 📊 完聴率」を表示
         let metaStatsHtml = '';
+    
         if (currentMode === 'playCount') {
+          // 再生回数タブの場合
           const retention = Math.round(getRetentionRate(song));
           metaStatsHtml = `<span style="font-size: 11px; color: #00ffcc; margin-right: 8px; white-space: nowrap;">👀 ${song.playCount}回 | 📊 ${retention}%</span>`;
+        } else if (currentMode === 'trending') {
+          // 🔥 急上昇タブの場合：直近増加数
+          const pastPlays = pastSnapshotData ? (pastSnapshotData[song.id]?.playCount || 0) : 0;
+          const diff = song.playCount - pastPlays;
+          metaStatsHtml = `<span style="font-size: 11px; color: #ffaa00; font-weight: bold; margin-right: 8px; white-space: nowrap;">🔥 +${diff}回</span>`;
+        } else {
+          // 🔥 通常タブ（全曲順など）の場合：好きな順のランキング差分表示（順位変動）
+          let rankDiffHtml = '';
+          const currentRank = index + 1;
+    
+          if (!pastSnapshotData || !pastSnapshotData[song.id] || pastSnapshotData[song.id].rank === undefined) {
+            rankDiffHtml = `<span style="font-size: 10px; background: #ffaa00; color: #000; padding: 1px 4px; border-radius: 3px; font-weight: bold; margin-right: 6px;">NEW</span>`;
+          } else {
+            const pastRank = pastSnapshotData[song.id].rank;
+            const diff = pastRank - currentRank; // 10位->8位なら +2
+    
+            if (diff > 0) {
+              rankDiffHtml = `<span style="font-size: 11px; color: #00ff88; font-weight: bold; margin-right: 6px;">↑${diff}</span>`;
+            } else if (diff < 0) {
+              rankDiffHtml = `<span style="font-size: 11px; color: #ff4444; font-weight: bold; margin-right: 6px;">↓${Math.abs(diff)}</span>`;
+            } else {
+              rankDiffHtml = `<span style="font-size: 11px; color: #888888; margin-right: 6px;">-</span>`;
+            }
+          }
+          metaStatsHtml = rankDiffHtml;
         }
     
         li.innerHTML = `
