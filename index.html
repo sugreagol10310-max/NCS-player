@@ -188,6 +188,7 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     const songsRef = db.ref('music_chart/songs');
+    const historyRef = db.ref('music_chart/daily_history'); // 🔥 履歴保存用参照
     
     // --------------------------------------------------
     // アプリ変数
@@ -202,7 +203,6 @@
     let isCountedCurrentSong = false;
     let listenTimer = null;
     
-    // 1. 再生方法フラグ（true: 自発的クリック / false: 自動送りやボタン遷移）
     let isManualSelection = false; 
     
     function initTierSelects() {
@@ -270,6 +270,9 @@
       if (currentPlaylist.length > 0 && (!player || !player.getVideoData)) {
         loadCurrentSong();
       }
+    
+      // 起動・更新時に毎日0時の保存チェックを実行
+      checkAndSaveDailyHistory();
     });
     
     function saveAllToFirebase() {
@@ -286,7 +289,6 @@
       songs.forEach((s, i) => s.order = i);
     }
     
-    // 平均完聴率（%）を計算するヘルパー関数
     function getRetentionRate(song) {
       if (!song || !song.playCount || !song.duration) return 0;
       const avgWatchTime = song.totalWatchTime / song.playCount;
@@ -294,7 +296,64 @@
     }
     
     // --------------------------------------------------
-    // 2. モード選択とソート処理（「再生回数」タブ追加）
+    // 🕒 毎日 0:00 自動バックアップ（履歴保存）処理
+    // --------------------------------------------------
+    function checkAndSaveDailyHistory() {
+      if (songs.length === 0) return;
+    
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0]; // "YYYY-MM-DD" フォーマット
+    
+      // 当日のデータが既に存在するか確認
+      historyRef.child(dateStr).once('value', (snapshot) => {
+        if (!snapshot.exists()) {
+          saveDailySnapshot(dateStr);
+        }
+      });
+    }
+    
+    function saveDailySnapshot(dateStr) {
+      const snapshotData = {
+        timestamp: firebase.database.ServerValue.TIMESTAMP,
+        songs: {}
+      };
+    
+      songs.forEach(song => {
+        snapshotData.songs[song.id] = {
+          title: song.title,
+          playCount: song.playCount,
+          totalWatchTime: song.totalWatchTime,
+          duration: song.duration,
+          retentionRate: Math.round(getRetentionRate(song)),
+          tier: song.tier,
+          order: song.order
+        };
+      });
+    
+      historyRef.child(dateStr).set(snapshotData, (error) => {
+        if (!error) {
+          console.log(`[Auto Backup] ${dateStr} の視聴統計データをFirebaseへ保存しました！`);
+        }
+      });
+    }
+    
+    // 0:00:00 のタイミングをミリ秒で計算してスケジュールセットするタイマー
+    function scheduleMidnightTask() {
+      const now = new Date();
+      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
+      const msToMidnight = nextMidnight.getTime() - now.getTime();
+    
+      setTimeout(() => {
+        const todayStr = new Date().toISOString().split('T')[0];
+        saveDailySnapshot(todayStr);
+        // 翌日分を再スケジュール
+        scheduleMidnightTask();
+      }, msToMidnight);
+    }
+    scheduleMidnightTask(); // タイマースタート
+    
+    // --------------------------------------------------
+    // モード選択とソート処理
     // --------------------------------------------------
     function updatePlaylistByMode() {
       if (currentMode === 'top20') {
@@ -302,23 +361,18 @@
       } else if (currentMode === 'bottom') {
         currentPlaylist = songs.slice(Math.floor(songs.length / 2)).sort(() => Math.random() - 0.5);
       } else if (currentMode === 'playCount') {
-        // 🔥 再生回数タブ専用ソート（元のsongs配列は汚さずコピーを整列）
         currentPlaylist = [...songs].sort((a, b) => {
-          // ルール①: 再生回数が多い順
           if (b.playCount !== a.playCount) {
             return b.playCount - a.playCount;
           }
-          // ルール②: 平均完聴率が高い順
           const retA = getRetentionRate(a);
           const retB = getRetentionRate(b);
           if (retB !== retA) {
             return retB - retA;
           }
-          // ルール③: 曲名のABC順
           return a.title.localeCompare(b.title, 'en', { sensitivity: 'base' });
         });
       } else {
-        // 全曲順 (デフォルト)
         currentPlaylist = [...songs];
       }
     }
@@ -333,7 +387,7 @@
     }
     
     // --------------------------------------------------
-    // CSVデータの加算インポート処理
+    // CSV加算インポート処理
     // --------------------------------------------------
     function importCSVData() {
       const rawText = document.getElementById('csv-input').value.trim();
@@ -444,13 +498,13 @@
     }
     
     // --------------------------------------------------
-    // 🎧 1. 視聴カウント＆タイマー計測ロジック
+    // 🎧 視聴カウント＆タイマー計測ロジック
     // --------------------------------------------------
     function onPlayerStateChange(event) {
       if (event.data === YT.PlayerState.PLAYING) startListeningTimer();
       else stopListeningTimer();
       if (event.data === YT.PlayerState.ENDED) {
-        isManualSelection = false; // 自動送り時はフラグOFF
+        isManualSelection = false;
         nextSong();
       }
     }
@@ -474,17 +528,13 @@
         song.totalWatchTime++;
         db.ref(`music_chart/songs/${song.id}/totalWatchTime`).set(song.totalWatchTime);
     
-        // 🔥 閾値判定：自発的クリックなら10%（0.1）、その他の自動再生等は30%（0.3）
         const threshold = isManualSelection ? 0.1 : 0.3;
     
         if (!isCountedCurrentSong && (listenedSeconds / duration) >= threshold) {
           song.playCount++;
           isCountedCurrentSong = true;
-          // Firebase上でのみ更新（画面表示は更新しない）
           db.ref(`music_chart/songs/${song.id}/playCount`).set(song.playCount);
         }
-    
-        // 注: リアルタイムに画面更新させないため updateTrackInfoDisplay() の呼出を抑制
       }, 1000);
     }
     
@@ -492,7 +542,7 @@
     function resetListenTimer() { stopListeningTimer(); listenedSeconds = 0; isCountedCurrentSong = false; }
     
     // --------------------------------------------------
-    // ランキングUI描画
+    // 🖼️ ランキングUI描画（再生回数表示対応）
     // --------------------------------------------------
     function renderRankingUI() {
       const listEl = document.getElementById('rank-list');
@@ -500,12 +550,9 @@
       const currentSong = currentPlaylist[currentIndex];
     
       let lastTier = null;
-    
-      // 再生回数モードかどうかに応じて描画対象を切替
       const targetList = (currentMode === 'playCount') ? currentPlaylist : songs;
     
       targetList.forEach((song, index) => {
-        // 再生回数タブ以外ではティアヘッダーを表示
         if (currentMode !== 'playCount' && song.tier !== lastTier) {
           const tierObj = TIER_DEFINITIONS.find(t => t.code === song.tier);
           const header = document.createElement('li');
@@ -519,7 +566,6 @@
         li.className = 'rank-item';
         if (currentSong && song.id === currentSong.id) li.classList.add('active');
     
-        // 🔥 ランキングリストからのクリック時: 自発的選択フラグ(isManualSelection)を ON にして再生
         li.onclick = () => {
           let idx = currentPlaylist.findIndex(s => s.id === song.id);
           if (idx !== -1) { 
@@ -529,10 +575,18 @@
           }
         };
     
+        // 🔥 再生回数タブの時だけ右側に「👀 回数 | 📊 完聴率」を表示
+        let metaStatsHtml = '';
+        if (currentMode === 'playCount') {
+          const retention = Math.round(getRetentionRate(song));
+          metaStatsHtml = `<span style="font-size: 11px; color: #00ffcc; margin-right: 8px; white-space: nowrap;">👀 ${song.playCount}回 | 📊 ${retention}%</span>`;
+        }
+    
         li.innerHTML = `
           <span class="rank-num">${index + 1}位</span>
           <span class="rank-tier-tag">${song.tier}</span>
           <span class="rank-name">${song.title}</span>
+          ${metaStatsHtml}
           <button class="rank-del-btn" onclick="deleteSong('${song.id}', event)">✕</button>
         `;
         listEl.appendChild(li);
@@ -647,14 +701,14 @@
     
     function nextSong() {
       if (currentPlaylist.length === 0) return;
-      isManualSelection = false; // ボタンで送る場合はフラグOFF
+      isManualSelection = false;
       currentIndex = (currentIndex + 1) % currentPlaylist.length;
       loadCurrentSong();
     }
     
     function prevSong() {
       if (currentPlaylist.length === 0) return;
-      isManualSelection = false; // ボタンで戻る場合はフラグOFF
+      isManualSelection = false;
       currentIndex = (currentIndex - 1 + currentPlaylist.length) % currentPlaylist.length;
       loadCurrentSong();
     }
