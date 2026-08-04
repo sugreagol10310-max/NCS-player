@@ -265,7 +265,9 @@
     }
     initTierSelects();
     
-    // 🔥 Firebaseからリアルタイム取得
+    // --------------------------------------------------
+    // 🔥 Firebaseリアルタイム受信の修正
+    // --------------------------------------------------
     songsRef.on('value', (snapshot) => {
       const data = snapshot.val();
       const currentSongId = currentPlaylist[currentIndex] ? currentPlaylist[currentIndex].id : null;
@@ -317,6 +319,7 @@
           loadCurrentSong();
         }
     
+        // 🔥 毎回保存するのではなく「今日の日付データが無ければ保存」のチェックのみ行う
         checkAndSaveDailyHistory();
       });
     });
@@ -393,65 +396,7 @@
         }
       });
     }
-    
-    // --------------------------------------------------
-    // 🔥 Firebaseリアルタイム受信の修正
-    // --------------------------------------------------
-    songsRef.on('value', (snapshot) => {
-      const data = snapshot.val();
-      const currentSongId = currentPlaylist[currentIndex] ? currentPlaylist[currentIndex].id : null;
-    
-      if (data) {
-        let rawSongs = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-        rawSongs.sort((a, b) => (b.score || 0) - (a.score || 0));
-        
-        songs = rawSongs.map((s, idx) => {
-          const duration = s.duration || 200;
-          const playCount = s.playCount || 0;
-          
-          let totalWatchTime = s.totalWatchTime;
-          if (totalWatchTime === undefined || totalWatchTime === null) {
-            const effectivePlays = playCount > 0 ? playCount : 1;
-            totalWatchTime = Math.round(duration * 0.5 * effectivePlays);
-          }
-    
-          return {
-            id: s.id,
-            youtubeId: s.youtubeId,
-            title: s.title,
-            year: s.year || 2024,
-            playCount: playCount,
-            duration: duration,
-            totalWatchTime: totalWatchTime,
-            tier: s.tier || scoreToTierCode(s.score || 80),
-            order: s.order !== undefined ? s.order : idx
-          };
-        });
-      } else {
-        songs = [];
-      }
-    
-      sortSongs();
-    
-      fetchPastHistory(() => {
-        updatePlaylistByMode();
-    
-        if (currentSongId) {
-          const newIndex = currentPlaylist.findIndex(s => s.id === currentSongId);
-          if (newIndex !== -1) currentIndex = newIndex;
-        }
-    
-        renderRankingUI();
-        updateTrackInfoDisplay();
-    
-        if (currentPlaylist.length > 0 && (!player || !player.getVideoData)) {
-          loadCurrentSong();
-        }
-    
-        // 🔥 毎回保存するのではなく「今日の日付データが無ければ保存」のチェックのみ行う
-        checkAndSaveDailyHistory();
-      });
-    });
+  
     
     function fetchPastHistory(callback) {
       historyRef.once('value', (snapshot) => {
@@ -532,18 +477,40 @@
       endDateSelect.value = dates[dates.length - 1];
     }
     
-    function getSongSnapshotData(dateStr, song) {
+    // --------------------------------------------------
+    // アナリティクス用Snapshot取得（修正版）
+    // --------------------------------------------------
+    function getSongSnapshotData(dateStr, song, isEndDate) {
       const todayStr = new Date().toISOString().split('T')[0];
-      if (dateStr === todayStr) {
+    
+      // 1. 終了日として「今日」が選ばれた場合のみ、リアルタイムの最新データを返す
+      if (isEndDate && dateStr === todayStr) {
         return {
-          playCount: song.playCount,
-          totalWatchTime: song.totalWatchTime,
+          playCount: song.playCount || 0,
+          totalWatchTime: song.totalWatchTime || 0,
           retentionRate: Math.round(getRetentionRate(song)),
           duration: song.duration
         };
       }
+    
+      // 2. それ以外（過去の日付、または開始日として「今日」が選ばれた場合）は 0:00 時点のアーカイブを参照
       const snap = allHistoryData[dateStr]?.songs?.[song.id];
-      return snap || { playCount: 0, totalWatchTime: 0, retentionRate: 0, duration: song.duration };
+      if (snap) {
+        return {
+          playCount: snap.playCount || 0,
+          totalWatchTime: snap.totalWatchTime || 0,
+          retentionRate: snap.retentionRate || 0,
+          duration: snap.duration || song.duration
+        };
+      }
+    
+      // アーカイブがまだない場合のフォールバック
+      return {
+        playCount: song.playCount || 0,
+        totalWatchTime: song.totalWatchTime || 0,
+        retentionRate: Math.round(getRetentionRate(song)),
+        duration: song.duration
+      };
     }
     
     function renderAnalyticsTable() {
@@ -555,8 +522,9 @@
       if (!startDate || !endDate) return;
     
       analyticsCalculatedData = songs.map(song => {
-        const startData = getSongSnapshotData(startDate, song);
-        const endData = getSongSnapshotData(endDate, song);
+        // renderAnalyticsTable() 内のデータ取得部分を書き換え
+        const startData = getSongSnapshotData(startDate, song, false); // 開始日 (0:00時点)
+        const endData = getSongSnapshotData(endDate, song, true);      // 終了日 (今日ならリアルタイム)
     
         let valStart = 0;
         let valEnd = 0;
