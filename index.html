@@ -621,31 +621,61 @@
       currentIndex = 0;
       if (currentMode !== 'analytics') loadCurrentSong();
     }
-    
+
     // --------------------------------------------------
-    // CSV加算インポート処理
+    // CSV加算インポート処理（完全対応版パーサー）
     // --------------------------------------------------
     function importCSVData() {
       const rawText = document.getElementById('csv-input').value.trim();
       if (!rawText) return alert('CSVテキストを貼り付けてください。');
     
-      const lines = rawText.split('\n');
+      const lines = rawText.split(/\r?\n/);
       let updatedCount = 0;
       let ignoredCount = 0;
     
-      lines.forEach((line, index) => {
-        if (index === 0) return;
-        const cols = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
-        if (!cols || cols.length < 8) return;
+      // CSVの1行を正確に配列に分解する関数
+      function parseCSVLine(line) {
+        const result = [];
+        let cur = '';
+        let inQuotes = false;
     
+        for (let i = 0; i < line.length; i++) {
+          const c = line[i];
+          if (c === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+              cur += '"';
+              i++;
+            } else {
+              inQuotes = !inQuotes;
+            }
+          } else if (c === ',' && !inQuotes) {
+            result.push(cur.trim());
+            cur = '';
+          } else {
+            cur += c;
+          }
+        }
+        result.push(cur.trim());
+        return result;
+      }
+    
+      lines.forEach((line, index) => {
+        if (index === 0 || !line.trim()) return; // ヘッダー行や空行をスキップ
+    
+        const cols = parseCSVLine(line);
+        if (cols.length < 7) return;
+    
+        // 前後のダブルクォーテーションを除去
         const cleanCols = cols.map(c => c.replace(/^"|"$/g, '').trim());
+    
         const ytid = cleanCols[0];
         if (!ytid || ytid === '合計' || ytid.startsWith('-')) return;
     
-        const durationSec = parseInt(cleanCols[3]) || 0;
-        const csvPlays = parseInt(cleanCols[4]) || 0;
-        const csvHours = parseFloat(cleanCols[6]) || 0;
-        const csvWatchTimeSec = Math.round(csvHours * 3600);
+        // データの取得
+        const durationSec = parseInt(cleanCols[3]) || 0;     // 229
+        const csvPlays = parseInt(cleanCols[4]) || 0;        // 47
+        const csvHours = parseFloat(cleanCols[6]) || 0;      // 2.0971
+        const csvWatchTimeSec = Math.round(csvHours * 3600); // 秒に換算
     
         let existingSong = songs.find(s => s.youtubeId === ytid);
     
