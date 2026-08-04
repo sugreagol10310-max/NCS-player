@@ -293,60 +293,49 @@
       return 0;
     }
 
+    // --------------------------------------------------
+    // CSVデータの加算インポート処理（※既存曲のみ対象・新曲無視モード）
+    // --------------------------------------------------
     function importCSVData() {
       const rawText = document.getElementById('csv-input').value.trim();
       if (!rawText) return alert('CSVテキストを貼り付けてください。');
-
+    
       const lines = rawText.split('\n');
       let updatedCount = 0;
-      let insertedCount = 0;
-
-      // 簡単なCSVパース（引用符考慮）
+      let ignoredCount = 0;
+    
       lines.forEach((line, index) => {
         if (index === 0) return; // ヘッダー行スキップ
         const cols = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
         if (!cols || cols.length < 8) return;
-
+    
         const cleanCols = cols.map(c => c.replace(/^"|"$/g, '').trim());
         const ytid = cleanCols[0];
         if (!ytid || ytid === '合計' || ytid.startsWith('-')) return;
-
-        const title = cleanCols[1];
+    
         const durationSec = parseInt(cleanCols[3]) || 0;
         const csvPlays = parseInt(cleanCols[4]) || 0;
         const csvHours = parseFloat(cleanCols[6]) || 0;
         const csvWatchTimeSec = Math.round(csvHours * 3600); // 時間 -> 秒換算
-
+    
         // 既存曲の検索（YouTube IDでマッチング）
         let existingSong = songs.find(s => s.youtubeId === ytid);
-
+    
         if (existingSong) {
-          // 🔥 既存データに加算！
+          // 🔥 既存データのみ加算！
           existingSong.playCount += csvPlays;
           existingSong.totalWatchTime += csvWatchTimeSec;
           if (durationSec > 0) existingSong.duration = durationSec;
           updatedCount++;
         } else {
-          // 新規追加
-          const newSong = {
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 4),
-            youtubeId: ytid,
-            title: title || 'Unknown Track',
-            year: 2024,
-            playCount: csvPlays,
-            duration: durationSec > 0 ? durationSec : 200,
-            totalWatchTime: csvWatchTimeSec,
-            tier: "B",
-            order: songs.length
-          };
-          songs.push(newSong);
-          insertedCount++;
+          // 🚫 新曲は追加せずにカウントだけして無視する
+          ignoredCount++;
         }
       });
-
+    
       saveAllToFirebase();
       document.getElementById('csv-input').value = '';
-      alert(`CSVインポート完了！\n・既存曲の更新(加算): ${updatedCount} 件\n・新規追加: ${insertedCount} 件`);
+      alert(`CSVインポート完了！\n・既存曲のデータ更新(加算): ${updatedCount} 件\n・無視（スキップした新曲）: ${ignoredCount} 件`);
     }
 
     // --------------------------------------------------
