@@ -625,6 +625,9 @@
     // --------------------------------------------------
     // CSV加算インポート処理（完全対応版パーサー）
     // --------------------------------------------------
+    // --------------------------------------------------
+    // CSV加算インポート処理（ハイフン始まりのYouTubeID対応版）
+    // --------------------------------------------------
     function importCSVData() {
       const rawText = document.getElementById('csv-input').value.trim();
       if (!rawText) return alert('CSVテキストを貼り付けてください。');
@@ -669,7 +672,9 @@
         const cleanCols = cols.map(c => c.replace(/^"|"$/g, '').trim());
     
         const ytid = cleanCols[0];
-        if (!ytid || ytid === '合計' || ytid.startsWith('-')) return;
+        
+        // 🔥 「-」で始まる動画IDも許可するように修正（「合計」や空欄のみスキップ）
+        if (!ytid || ytid === '合計' || ytid === '総計' || ytid === 'Total') return;
     
         // データの取得
         const durationSec = parseInt(cleanCols[3]) || 0;     // 229
