@@ -163,14 +163,14 @@
       { code: "E",    name: "Bad",            minScore: 5 },
       { code: "F",    name: "Too Bad",        minScore: 0 }
     ];
-
+    
     function scoreToTierCode(score) {
       for (let t of TIER_DEFINITIONS) {
         if (score >= t.minScore) return t.code;
       }
       return "F";
     }
-
+    
     // --------------------------------------------------
     // 🔥 Firebase設定
     // --------------------------------------------------
@@ -183,11 +183,11 @@
       messagingSenderId: "211698967527",
       appId: "1:211698967527:web:3d856f269a6d445fda1342"
     };
-
+    
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     const songsRef = db.ref('music_chart/songs');
-
+    
     // --------------------------------------------------
     // アプリ変数
     // --------------------------------------------------
@@ -196,17 +196,21 @@
     let currentIndex = 0;
     let player;
     let currentMode = 'all';
-
+    
     let listenedSeconds = 0;
     let isCountedCurrentSong = false;
     let listenTimer = null;
-
+    
+    // 1. 再生方法フラグ（true: 自発的クリック / false: 自動送りやボタン遷移）
+    let isManualSelection = false; 
+    
     function initTierSelects() {
       const selectTier = document.getElementById('select-tier');
       const inputTier = document.getElementById('input-tier');
+      if (!selectTier || !inputTier) return;
       selectTier.innerHTML = '';
       inputTier.innerHTML = '';
-
+    
       TIER_DEFINITIONS.forEach(t => {
         const opt = `<option value="${t.code}">${t.code} (${t.name})</option>`;
         selectTier.innerHTML += opt;
@@ -215,27 +219,26 @@
       inputTier.value = "A+";
     }
     initTierSelects();
-
-    // 🔥 Firebaseからリアルタイム取得（欠損データの補完ロジック含む）
+    
+    // 🔥 Firebaseからリアルタイム取得
     songsRef.on('value', (snapshot) => {
       const data = snapshot.val();
       const currentSongId = currentPlaylist[currentIndex] ? currentPlaylist[currentIndex].id : null;
-
+    
       if (data) {
         let rawSongs = Object.keys(data).map(key => ({ id: key, ...data[key] }));
         rawSongs.sort((a, b) => (b.score || 0) - (a.score || 0));
         
         songs = rawSongs.map((s, idx) => {
-          const duration = s.duration || 200; // 動画長（不明時デフォルト200秒）
+          const duration = s.duration || 200;
           const playCount = s.playCount || 0;
           
-          // 🔥 【補完処理】 totalWatchTime が無い場合、動画長さの5割 × 再生回数（または1回分）でセット
           let totalWatchTime = s.totalWatchTime;
           if (totalWatchTime === undefined || totalWatchTime === null) {
-            const effectivePlays = playCount;
+            const effectivePlays = playCount > 0 ? playCount : 1;
             totalWatchTime = Math.round(duration * 0.5 * effectivePlays);
           }
-
+    
           return {
             id: s.id,
             youtubeId: s.youtubeId,
@@ -251,23 +254,23 @@
       } else {
         songs = [];
       }
-
+    
       sortSongs();
       updatePlaylistByMode();
-
+    
       if (currentSongId) {
         const newIndex = currentPlaylist.findIndex(s => s.id === currentSongId);
         if (newIndex !== -1) currentIndex = newIndex;
       }
-
+    
       renderRankingUI();
       updateTrackInfoDisplay();
-
+    
       if (currentPlaylist.length > 0 && (!player || !player.getVideoData)) {
         loadCurrentSong();
       }
     });
-
+    
     function saveAllToFirebase() {
       const dataObj = {};
       songs.forEach((s, index) => {
@@ -276,25 +279,60 @@
       });
       songsRef.set(dataObj);
     }
-
+    
     function sortSongs() {
       songs.sort((a, b) => a.order - b.order);
       songs.forEach((s, i) => s.order = i);
     }
-
+    
+    // 平均完聴率（%）を計算するヘルパー関数
+    function getRetentionRate(song) {
+      if (!song || !song.playCount || !song.duration) return 0;
+      const avgWatchTime = song.totalWatchTime / song.playCount;
+      return Math.min((avgWatchTime / song.duration) * 100, 100);
+    }
+    
+    // --------------------------------------------------
+    // 2. モード選択とソート処理（「再生回数」タブ追加）
+    // --------------------------------------------------
+    function updatePlaylistByMode() {
+      if (currentMode === 'top20') {
+        currentPlaylist = songs.slice(0, 20);
+      } else if (currentMode === 'bottom') {
+        currentPlaylist = songs.slice(Math.floor(songs.length / 2)).sort(() => Math.random() - 0.5);
+      } else if (currentMode === 'playCount') {
+        // 🔥 再生回数タブ専用ソート（元のsongs配列は汚さずコピーを整列）
+        currentPlaylist = [...songs].sort((a, b) => {
+          // ルール①: 再生回数が多い順
+          if (b.playCount !== a.playCount) {
+            return b.playCount - a.playCount;
+          }
+          // ルール②: 平均完聴率が高い順
+          const retA = getRetentionRate(a);
+          const retB = getRetentionRate(b);
+          if (retB !== retA) {
+            return retB - retA;
+          }
+          // ルール③: 曲名のABC順
+          return a.title.localeCompare(b.title, 'en', { sensitivity: 'base' });
+        });
+      } else {
+        // 全曲順 (デフォルト)
+        currentPlaylist = [...songs];
+      }
+    }
+    
+    function setMode(mode, e) {
+      document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+      e.target.classList.add('active');
+      currentMode = mode;
+      updatePlaylistByMode();
+      currentIndex = 0;
+      loadCurrentSong();
+    }
+    
     // --------------------------------------------------
     // CSVデータの加算インポート処理
-    // --------------------------------------------------
-    function parseDurationHHMMSS(str) {
-      if (!str) return 0;
-      const parts = str.trim().split(':').map(Number);
-      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-      if (parts.length === 2) return parts[0] * 60 + parts[1];
-      return 0;
-    }
-
-    // --------------------------------------------------
-    // CSVデータの加算インポート処理（※既存曲のみ対象・新曲無視モード）
     // --------------------------------------------------
     function importCSVData() {
       const rawText = document.getElementById('csv-input').value.trim();
@@ -305,7 +343,7 @@
       let ignoredCount = 0;
     
       lines.forEach((line, index) => {
-        if (index === 0) return; // ヘッダー行スキップ
+        if (index === 0) return;
         const cols = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
         if (!cols || cols.length < 8) return;
     
@@ -316,19 +354,16 @@
         const durationSec = parseInt(cleanCols[3]) || 0;
         const csvPlays = parseInt(cleanCols[4]) || 0;
         const csvHours = parseFloat(cleanCols[6]) || 0;
-        const csvWatchTimeSec = Math.round(csvHours * 3600); // 時間 -> 秒換算
+        const csvWatchTimeSec = Math.round(csvHours * 3600);
     
-        // 既存曲の検索（YouTube IDでマッチング）
         let existingSong = songs.find(s => s.youtubeId === ytid);
     
         if (existingSong) {
-          // 🔥 既存データのみ加算！
           existingSong.playCount += csvPlays;
           existingSong.totalWatchTime += csvWatchTimeSec;
           if (durationSec > 0) existingSong.duration = durationSec;
           updatedCount++;
         } else {
-          // 🚫 新曲は追加せずにカウントだけして無視する
           ignoredCount++;
         }
       });
@@ -337,7 +372,7 @@
       document.getElementById('csv-input').value = '';
       alert(`CSVインポート完了！\n・既存曲のデータ更新(加算): ${updatedCount} 件\n・無視（スキップした新曲）: ${ignoredCount} 件`);
     }
-
+    
     // --------------------------------------------------
     // UI表示 ＆ トラック変更処理
     // --------------------------------------------------
@@ -347,20 +382,20 @@
       song.tier = newTier;
       db.ref(`music_chart/songs/${song.id}/tier`).set(newTier);
     }
-
+    
     function moveCurrentSongToRank() {
       if (currentPlaylist.length === 0) return;
       const targetInput = document.getElementById('input-direct-rank');
       let targetRank = parseInt(targetInput.value);
-
+    
       if (isNaN(targetRank) || targetRank < 1 || targetRank > songs.length) {
         return alert(`1〜${songs.length}位の間で指定してください。`);
       }
-
+    
       const song = currentPlaylist[currentIndex];
       const oldIndex = songs.findIndex(s => s.id === song.id);
       const newIndex = targetRank - 1;
-
+    
       if (oldIndex !== -1) {
         songs.splice(oldIndex, 1);
         songs.splice(newIndex, 0, song);
@@ -368,20 +403,20 @@
         targetInput.value = '';
       }
     }
-
+    
     function moveCurrentSongStep(step) {
       if (currentPlaylist.length === 0) return;
       const song = currentPlaylist[currentIndex];
       const oldIndex = songs.findIndex(s => s.id === song.id);
       const newIndex = oldIndex + step;
-
+    
       if (newIndex >= 0 && newIndex < songs.length) {
         songs.splice(oldIndex, 1);
         songs.splice(newIndex, 0, song);
         saveAllToFirebase();
       }
     }
-
+    
     function updateTrackInfoDisplay() {
       if (currentPlaylist.length === 0) {
         document.getElementById('display-title').innerText = "データがありません";
@@ -392,18 +427,12 @@
         document.getElementById('display-title').innerText = song.title;
         document.getElementById('display-plays').innerText = song.playCount;
         
-        // ⏱️ 時間表示フォーマット（分）
         const totalMinutes = Math.round(song.totalWatchTime / 60);
         document.getElementById('display-total-time').innerText = `${totalMinutes}分`;
-
-        // 📊 平均完聴率（平均視聴時間 ÷ 動画の長さ）の計算
-        let retention = 0;
-        if (song.playCount > 0 && song.duration > 0) {
-          const avgWatchTime = song.totalWatchTime / song.playCount;
-          retention = Math.min(Math.round((avgWatchTime / song.duration) * 100), 100);
-        }
+    
+        const retention = Math.round(getRetentionRate(song));
         document.getElementById('display-retention').innerText = `${retention}%`;
-
+    
         document.getElementById('display-year').innerText = song.year;
         
         const tierObj = TIER_DEFINITIONS.find(t => t.code === song.tier) || { name: song.tier };
@@ -412,53 +441,105 @@
         document.getElementById('input-direct-rank').placeholder = `${song.order + 1}位`;
       }
     }
-
+    
     // --------------------------------------------------
-    // 🎧 リアルタイム再生・計測ロジック
+    // 🎧 1. 視聴カウント＆タイマー計測ロジック
     // --------------------------------------------------
     function onPlayerStateChange(event) {
       if (event.data === YT.PlayerState.PLAYING) startListeningTimer();
       else stopListeningTimer();
-      if (event.data === YT.PlayerState.ENDED) nextSong();
+      if (event.data === YT.PlayerState.ENDED) {
+        isManualSelection = false; // 自動送り時はフラグOFF
+        nextSong();
+      }
     }
-
+    
     function startListeningTimer() {
       stopListeningTimer();
       listenTimer = setInterval(() => {
         if (!player || !player.getDuration) return;
         const duration = player.getDuration();
         if (duration <= 0) return;
-
+    
         const song = currentPlaylist[currentIndex];
         if (!song) return;
-
-        // 動画の正解の長さを反映
+    
         if (!song.duration || song.duration !== Math.round(duration)) {
           song.duration = Math.round(duration);
           db.ref(`music_chart/songs/${song.id}/duration`).set(song.duration);
         }
-
-        // 毎秒、視聴時間を加算してリアルタイム保存
+    
         listenedSeconds++;
         song.totalWatchTime++;
         db.ref(`music_chart/songs/${song.id}/totalWatchTime`).set(song.totalWatchTime);
-
-        // 30%達成時に視聴回数 +1 カウント
-        if (!isCountedCurrentSong && (listenedSeconds / duration) >= 0.3) {
+    
+        // 🔥 閾値判定：自発的クリックなら10%（0.1）、その他の自動再生等は30%（0.3）
+        const threshold = isManualSelection ? 0.1 : 0.3;
+    
+        if (!isCountedCurrentSong && (listenedSeconds / duration) >= threshold) {
           song.playCount++;
           isCountedCurrentSong = true;
+          // Firebase上でのみ更新（画面表示は更新しない）
           db.ref(`music_chart/songs/${song.id}/playCount`).set(song.playCount);
         }
-
-        updateTrackInfoDisplay();
+    
+        // 注: リアルタイムに画面更新させないため updateTrackInfoDisplay() の呼出を抑制
       }, 1000);
     }
-
+    
     function stopListeningTimer() { if (listenTimer) clearInterval(listenTimer); listenTimer = null; }
     function resetListenTimer() { stopListeningTimer(); listenedSeconds = 0; isCountedCurrentSong = false; }
-
+    
     // --------------------------------------------------
-    // バックアップ/復元 & 追加機能
+    // ランキングUI描画
+    // --------------------------------------------------
+    function renderRankingUI() {
+      const listEl = document.getElementById('rank-list');
+      listEl.innerHTML = '';
+      const currentSong = currentPlaylist[currentIndex];
+    
+      let lastTier = null;
+    
+      // 再生回数モードかどうかに応じて描画対象を切替
+      const targetList = (currentMode === 'playCount') ? currentPlaylist : songs;
+    
+      targetList.forEach((song, index) => {
+        // 再生回数タブ以外ではティアヘッダーを表示
+        if (currentMode !== 'playCount' && song.tier !== lastTier) {
+          const tierObj = TIER_DEFINITIONS.find(t => t.code === song.tier);
+          const header = document.createElement('li');
+          header.className = 'tier-header';
+          header.innerText = `--- 🏆 Tier ${song.tier} : ${tierObj ? tierObj.name : ''} ---`;
+          listEl.appendChild(header);
+          lastTier = song.tier;
+        }
+    
+        const li = document.createElement('li');
+        li.className = 'rank-item';
+        if (currentSong && song.id === currentSong.id) li.classList.add('active');
+    
+        // 🔥 ランキングリストからのクリック時: 自発的選択フラグ(isManualSelection)を ON にして再生
+        li.onclick = () => {
+          let idx = currentPlaylist.findIndex(s => s.id === song.id);
+          if (idx !== -1) { 
+            isManualSelection = true;
+            currentIndex = idx; 
+            loadCurrentSong(); 
+          }
+        };
+    
+        li.innerHTML = `
+          <span class="rank-num">${index + 1}位</span>
+          <span class="rank-tier-tag">${song.tier}</span>
+          <span class="rank-name">${song.title}</span>
+          <button class="rank-del-btn" onclick="deleteSong('${song.id}', event)">✕</button>
+        `;
+        listEl.appendChild(li);
+      });
+    }
+    
+    // --------------------------------------------------
+    // バックアップ/復元 & その他操作
     // --------------------------------------------------
     function exportData() {
       if (songs.length === 0) return alert('保存するデータがありません。');
@@ -470,11 +551,11 @@
       downloadAnchor.click();
       downloadAnchor.remove();
     }
-
+    
     function importData(event) {
       const file = event.target.files[0];
       if (!file) return;
-
+    
       const reader = new FileReader();
       reader.onload = function(e) {
         try {
@@ -496,18 +577,18 @@
       };
       reader.readAsText(file);
     }
-
+    
     function addNewSong() {
       const titleInput = document.getElementById('input-title');
       let ytidInput = document.getElementById('input-ytid').value.trim();
       const yearInput = document.getElementById('input-year');
       const tierInput = document.getElementById('input-tier');
-
+    
       if (!titleInput.value.trim() || !ytidInput) return alert('入力してください');
-
+    
       if (ytidInput.includes('v=')) ytidInput = ytidInput.split('v=')[1].split('&')[0];
       else if (ytidInput.includes('youtu.be/')) ytidInput = ytidInput.split('youtu.be/')[1].split('?')[0];
-
+    
       const newId = Date.now().toString();
       const newSong = {
         id: newId,
@@ -520,89 +601,38 @@
         totalWatchTime: 0,
         order: songs.length
       };
-
+    
       db.ref(`music_chart/songs/${newId}`).set(newSong);
-
+    
       titleInput.value = '';
       document.getElementById('input-ytid').value = '';
     }
-
+    
     function deleteSong(id, e) {
       e.stopPropagation();
       if (confirm('削除しますか？')) {
         db.ref(`music_chart/songs/${id}`).remove();
       }
     }
-
-    function updatePlaylistByMode() {
-      if (currentMode === 'top20') currentPlaylist = songs.slice(0, 20);
-      else if (currentMode === 'bottom') currentPlaylist = songs.slice(Math.floor(songs.length / 2)).sort(() => Math.random() - 0.5);
-      else currentPlaylist = [...songs];
-    }
-
-    function setMode(mode, e) {
-      document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
-      e.target.classList.add('active');
-      currentMode = mode;
-      updatePlaylistByMode();
-      currentIndex = 0;
-      loadCurrentSong();
-    }
-
+    
     function loadCurrentSong() {
       if (currentPlaylist.length === 0) return;
       const song = currentPlaylist[currentIndex];
-
+    
       updateTrackInfoDisplay();
       resetListenTimer();
       renderRankingUI();
-
+    
       if (player && player.loadVideoById) {
         player.loadVideoById(song.youtubeId);
       }
     }
-
-    function renderRankingUI() {
-      const listEl = document.getElementById('rank-list');
-      listEl.innerHTML = '';
-      const currentSong = currentPlaylist[currentIndex];
-
-      let lastTier = null;
-
-      songs.forEach((song, index) => {
-        if (song.tier !== lastTier) {
-          const tierObj = TIER_DEFINITIONS.find(t => t.code === song.tier);
-          const header = document.createElement('li');
-          header.className = 'tier-header';
-          header.innerText = `--- 🏆 Tier ${song.tier} : ${tierObj ? tierObj.name : ''} ---`;
-          listEl.appendChild(header);
-          lastTier = song.tier;
-        }
-
-        const li = document.createElement('li');
-        li.className = 'rank-item';
-        if (currentSong && song.id === currentSong.id) li.classList.add('active');
-
-        li.onclick = () => {
-          let idx = currentPlaylist.findIndex(s => s.id === song.id);
-          if (idx !== -1) { currentIndex = idx; loadCurrentSong(); }
-        };
-
-        li.innerHTML = `
-          <span class="rank-num">${index + 1}位</span>
-          <span class="rank-tier-tag">${song.tier}</span>
-          <span class="rank-name">${song.title}</span>
-          <button class="rank-del-btn" onclick="deleteSong('${song.id}', event)">✕</button>
-        `;
-        listEl.appendChild(li);
-      });
-    }
-
+    
     // YouTube API Ready
     const tag = document.createElement('script');
     tag.src = "https://www.youtube.com/iframe_api";
     document.getElementsByTagName('script')[0].parentNode.insertBefore(tag, document.getElementsByTagName('script')[0]);
-
+    
     function onYouTubeIframeAPIReady() {
       player = new YT.Player('player', {
         videoId: '',
@@ -613,15 +643,17 @@
         }
       });
     }
-
+    
     function nextSong() {
       if (currentPlaylist.length === 0) return;
+      isManualSelection = false; // ボタンで送る場合はフラグOFF
       currentIndex = (currentIndex + 1) % currentPlaylist.length;
       loadCurrentSong();
     }
-
+    
     function prevSong() {
       if (currentPlaylist.length === 0) return;
+      isManualSelection = false; // ボタンで戻る場合はフラグOFF
       currentIndex = (currentIndex - 1 + currentPlaylist.length) % currentPlaylist.length;
       loadCurrentSong();
     }
