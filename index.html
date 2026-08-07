@@ -920,23 +920,76 @@
     }
     
     // --------------------------------------------------
-    // 🎵 曲のロード＆再生実行処理
+    // 🎵 曲のロード＆再生実行処理（安全保護付き）
     // --------------------------------------------------
     function loadCurrentSong(shouldPlay = true) {
-      if (currentPlaylist.length === 0) return;
-      const song = currentPlaylist[currentIndex];
+      if (!currentPlaylist || currentPlaylist.length === 0) return;
+      
+      // インデックスの安全チェック
+      if (currentIndex < 0 || currentIndex >= currentPlaylist.length) {
+        currentIndex = 0;
+      }
     
+      const song = currentPlaylist[currentIndex];
+      if (!song || !song.youtubeId) return;
+    
+      // 1. タイマーと画面表示を即座に更新
       resetListenTimer();
       updateTrackInfoDisplay();
       renderRankingUI();
     
-      if (player && typeof player.loadVideoById === 'function' && song.youtubeId) {
-        if (shouldPlay) {
-          player.loadVideoById(song.youtubeId);
-        } else {
-          player.cueVideoById(song.youtubeId);
+      // 2. YouTubeプレイヤーの状態を確認して安全に読み込む
+      if (player && typeof player.loadVideoById === 'function') {
+        try {
+          if (shouldPlay) {
+            player.loadVideoById(song.youtubeId);
+          } else {
+            player.cueVideoById(song.youtubeId);
+          }
+        } catch (err) {
+          console.warn("YouTube Player Load Error:", err);
         }
+      } else {
+        // プレイヤーの準備ができていない場合は少し待って再試行
+        setTimeout(() => {
+          if (player && typeof player.loadVideoById === 'function') {
+            if (shouldPlay) {
+              player.loadVideoById(song.youtubeId);
+            } else {
+              player.cueVideoById(song.youtubeId);
+            }
+          }
+        }, 500);
       }
+    }
+    
+    // --------------------------------------------------
+    // 🎧 YouTube API Ready＆プレイヤー初期化
+    // --------------------------------------------------
+    function onYouTubeIframeAPIReady() {
+      player = new YT.Player('player', {
+        videoId: '',
+        playerVars: { 
+          'playsinline': 1,
+          'autoplay': 0
+        },
+        events: {
+          'onReady': (event) => {
+            // プレイヤー準備完了時に最初の曲をセット（自動再生はしない）
+            if (currentPlaylist.length > 0) {
+              loadCurrentSong(false);
+            }
+          },
+          'onStateChange': onPlayerStateChange,
+          'onError': (e) => {
+            console.error("YouTube Player Error Code:", e.data);
+            // エラー（埋め込み不可動画など）が起きた場合は3秒後に次の曲へスキップ
+            setTimeout(() => {
+              nextSong();
+            }, 3000);
+          }
+        }
+      });
     }
     
     function nextSong() {
