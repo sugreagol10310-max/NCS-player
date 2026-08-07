@@ -1004,7 +1004,8 @@
     
       if (!titleInput.value.trim() || !ytidInput) return alert('入力してください');
     
-      if (ytidInput.includes('v=')) ytidInput = ytidInput.split('v=' Role)[1].split('&')[0];
+      // ⭕ 正しく修復された箇所
+      if (ytidInput.includes('v=')) ytidInput = ytidInput.split('v=')[1].split('&')[0];
       else if (ytidInput.includes('youtu.be/')) ytidInput = ytidInput.split('youtu.be/')[1].split('?')[0];
     
       const newId = Date.now().toString();
