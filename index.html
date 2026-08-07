@@ -787,14 +787,24 @@
     }
     
     // --------------------------------------------------
-    // 🎧 視聴カウント＆タイマー計測ロジック
+    // 🎧 YouTubeプレイヤー状態変更検知（自動遷移修復版）
     // --------------------------------------------------
     function onPlayerStateChange(event) {
-      if (event.data === YT.PlayerState.PLAYING) startListeningTimer();
-      else stopListeningTimer();
+      if (event.data === YT.PlayerState.PLAYING) {
+        startListeningTimer();
+      } else {
+        stopListeningTimer();
+      }
+    
+      // 曲が終了した時（自動で次の曲へ移行）
       if (event.data === YT.PlayerState.ENDED) {
+        stopListeningTimer();
         isManualSelection = false;
-        nextSong();
+        
+        // Firebaseの通信処理と競合しないよう、非同期で次の曲へ移行
+        setTimeout(() => {
+          nextSong();
+        }, 100);
       }
     }
     
@@ -910,7 +920,7 @@
     }
     
     // --------------------------------------------------
-    // 🎵 曲の読み込み処理（完全ロード保証版）
+    // 🎵 曲のロード＆再生実行処理
     // --------------------------------------------------
     function loadCurrentSong(shouldPlay = true) {
       if (currentPlaylist.length === 0) return;
@@ -920,29 +930,13 @@
       updateTrackInfoDisplay();
       renderRankingUI();
     
-      if (player && player.loadVideoById && song.youtubeId) {
+      if (player && typeof player.loadVideoById === 'function' && song.youtubeId) {
         if (shouldPlay) {
           player.loadVideoById(song.youtubeId);
         } else {
           player.cueVideoById(song.youtubeId);
         }
       }
-    }
-    
-    // YouTube API Ready
-    const tag = document.createElement('script');
-    tag.src = "https://www.youtube.com/iframe_api";
-    document.getElementsByTagName('script')[0].parentNode.insertBefore(tag, document.getElementsByTagName('script')[0]);
-    
-    function onYouTubeIframeAPIReady() {
-      player = new YT.Player('player', {
-        videoId: '',
-        playerVars: { 'playsinline': 1 },
-        events: {
-          'onReady': () => { if (currentPlaylist.length > 0) loadCurrentSong(false); },
-          'onStateChange': onPlayerStateChange
-        }
-      });
     }
     
     function nextSong() {
