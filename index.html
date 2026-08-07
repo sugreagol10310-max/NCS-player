@@ -856,7 +856,7 @@
     function resetListenTimer() { stopListeningTimer(); listenedSeconds = 0; isCountedCurrentSong = false; }
     
     // --------------------------------------------------
-    // 🖼️ ランキングUI描画
+    // 🖼️ ランキングUI描画（クリック処理の修復）
     // --------------------------------------------------
     function renderRankingUI() {
       if (currentMode === 'analytics') return;
@@ -882,12 +882,13 @@
         li.className = 'rank-item';
         if (currentSong && song.id === currentSong.id) li.classList.add('active');
     
+        // 🔥 クリック時にインデックスと表示・タイマーを完全に連動させる
         li.onclick = () => {
           let idx = currentPlaylist.findIndex(s => s.id === song.id);
           if (idx !== -1) { 
             isManualSelection = true;
             currentIndex = idx; 
-            loadCurrentSong(); 
+            loadCurrentSong(); // ここで表示更新＋タイマーリセット＋動画ロードを一括実行
           }
         };
     
@@ -930,6 +931,28 @@
         `;
         listEl.appendChild(li);
       });
+    }
+    
+    // --------------------------------------------------
+    // 🎵 曲の読み込み・更新処理（強化版）
+    // --------------------------------------------------
+    function loadCurrentSong() {
+      if (currentPlaylist.length === 0) return;
+      const song = currentPlaylist[currentIndex];
+    
+      // 1. カウントタイマーを即座にリセット（前の曲のカウント事故を防止）
+      resetListenTimer();
+    
+      // 2. 下部の曲情報表示を更新
+      updateTrackInfoDisplay();
+    
+      // 3. リストのアクティブ表示（ハイライト）を更新
+      renderRankingUI();
+    
+      // 4. YouTubeプレイヤーの動画を変更
+      if (player && player.loadVideoById && song.youtubeId) {
+        player.loadVideoById(song.youtubeId);
+      }
     }
     
     // --------------------------------------------------
