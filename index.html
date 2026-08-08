@@ -32,6 +32,7 @@
       cursor: pointer;
     }
     button:hover { background-color: #00cca3; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
     button.active { background-color: #ffaa00; color: #000; }
     input, select, textarea {
       background-color: #2a2a2a;
@@ -44,7 +45,8 @@
     textarea { width: 100%; height: 80px; box-sizing: border-box; }
     .player-container { text-align: center; margin-bottom: 15px; }
     #player { width: 100%; max-width: 560px; height: 315px; background: #000; margin: 0 auto; }
-    
+    #seek-bar { width: 100%; max-width: 560px; margin-top: 8px; accent-color: #00ffcc; }
+
     ul.rank-list { list-style: none; padding: 0; }
     li.rank-item {
       background: #2a2a2a;
@@ -76,14 +78,44 @@
     .rank-name { flex-grow: 1; font-weight: bold; }
     .rank-del-btn { background: #ff4444; color: #fff; padding: 2px 6px; font-size: 10px; }
 
+    #rank-search { width: 100%; box-sizing: border-box; margin-bottom: 10px; }
+
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
     th { background: #2a2a2a; padding: 8px; border-bottom: 2px solid #444; }
+
+    #toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #00ffcc;
+      color: #000;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-weight: bold;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+      z-index: 9999;
+      max-width: 90%;
+      text-align: center;
+    }
+    #toast.show { opacity: 1; }
+
+    #sync-indicator {
+      display: inline-block;
+      font-size: 12px;
+      color: #888;
+      margin-left: 8px;
+    }
   </style>
 </head>
 <body>
 
+<div id="toast"></div>
+
 <div class="container">
-  <h1>🎵 NCS Music Player & Ranking Chart</h1>
+  <h1>🎵 NCS Music Player & Ranking Chart <span id="sync-indicator"></span></h1>
 
   <div class="card">
     <button class="mode-btn active" onclick="setMode('all', event)">全曲リスト</button>
@@ -96,9 +128,12 @@
 
   <div class="card player-container">
     <div id="player"></div>
+    <input type="range" id="seek-bar" min="0" max="100" value="0" oninput="seekVideo(this.value)">
     <div style="margin-top: 10px;">
-      <button onclick="prevSong()">⏮ 前の曲</button>
-      <button onclick="nextSong()">⏭ 次の曲</button>
+      <button id="prev-btn" onclick="prevSong()">⏮ 前の曲</button>
+      <button id="play-pause-btn" onclick="togglePlayPause()">⏸ 一時停止</button>
+      <button id="next-btn" onclick="nextSong()">⏭ 次の曲</button>
+      <button id="reshuffle-btn" onclick="reshuffleNow()" style="display:none;">🔀 シャッフルし直す</button>
     </div>
     <div style="margin-top: 10px; text-align: left; background: #2a2a2a; padding: 10px; border-radius: 4px;">
       <div><strong>曲名:</strong> <span id="display-title">-</span></div>
@@ -122,6 +157,7 @@
     </div>
   </div>
 
+  <input type="text" id="rank-search" placeholder="🔍 曲名で検索..." oninput="renderRankingUI()">
   <ul id="rank-list" class="rank-list"></ul>
 
   <div id="analytics-container" class="card" style="display: none;">
@@ -173,6 +209,19 @@
 </div>
 
 <script>
+// --------------------------------------------------
+// 🍞 トースト通知（alertの代わりに使う軽量通知）
+// --------------------------------------------------
+let toastTimer = null;
+function showToast(message) {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.innerText = message;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
 // --------------------------------------------------
 // 🔥 ティア設定マスター定義
 // --------------------------------------------------
@@ -226,15 +275,33 @@ let currentIndex = 0;
 let player;
 let currentMode = 'all';
 
+// ★ 現在再生中の曲IDを「生きた変数」として保持する。
+//   非同期処理(Firebase同期など)はこの値を「使う瞬間」に参照するため、
+//   処理開始時点の古い値を掴んだまま巻き戻る、というバグが起きなくなる。
+let currentSongId = null;
+
 let listenedSeconds = 0;
 let isCountedCurrentSong = false;
 let listenTimer = null;
-let isManualSelection = false; 
+let isManualSelection = false;
+
+// ★ 視聴データはこの曲オブジェクトに対して溜め込み、まとめてFirebaseへ送る
+let activeListeningSong = null;
+let pendingWatchSeconds = 0;
+let pendingPlayIncrement = 0;
+let pendingDurationUpdate = null;
+const FLUSH_INTERVAL_SECONDS = 5; // 1秒ごとの書き込みをやめ、5秒ごと(または曲切替時)にまとめる
+
+// ★ 曲送り中の多重発火（連打・自動送りとクリックの競合）を防ぐロック
+let isTransitioning = false;
 
 let pastSnapshotData = null;
 let allHistoryData = {};
 let analyticsCalculatedData = [];
 let isInitialLoad = true;
+
+// ★ シャッフル順のキャッシュ（毎回シャッフルし直さないようにする）
+let shuffledOrderIds = null;
 
 function initTierSelects() {
   const selectTier = document.getElementById('select-tier');
@@ -252,19 +319,29 @@ function initTierSelects() {
 }
 initTierSelects();
 
+// --------------------------------------------------
 // 🔥 Firebaseリアルタイム同期
+// --------------------------------------------------
+function showSyncIndicator() {
+  const el = document.getElementById('sync-indicator');
+  if (!el) return;
+  el.innerText = '🔄';
+  clearTimeout(showSyncIndicator._t);
+  showSyncIndicator._t = setTimeout(() => { el.innerText = ''; }, 600);
+}
+
 songsRef.on('value', (snapshot) => {
+  showSyncIndicator();
   const data = snapshot.val();
-  const activeSongId = currentPlaylist[currentIndex] ? currentPlaylist[currentIndex].id : null;
 
   if (data) {
     let rawSongs = Object.keys(data).map(key => ({ id: key, ...data[key] }));
     rawSongs.sort((a, b) => (b.score || 0) - (a.score || 0));
-    
+
     songs = rawSongs.map((s, idx) => {
       const duration = s.duration || 200;
       const playCount = s.playCount || 0;
-      
+
       let totalWatchTime = s.totalWatchTime;
       if (totalWatchTime === undefined || totalWatchTime === null) {
         const effectivePlays = playCount > 0 ? playCount : 1;
@@ -288,28 +365,39 @@ songsRef.on('value', (snapshot) => {
   }
 
   sortSongs();
+  updatePlaylistByMode();
+  relocateCurrentSong();
+  renderRankingUI();
+  updateTrackInfoDisplay();
+  checkAndSaveDailyHistory();
 
-  fetchPastHistory(() => {
-    updatePlaylistByMode();
+  if (isInitialLoad && currentPlaylist.length > 0) {
+    isInitialLoad = false;
 
-    if (activeSongId) {
-      const foundIdx = currentPlaylist.findIndex(s => s.id === activeSongId);
-      if (foundIdx !== -1) currentIndex = foundIdx;
+    // 履歴データの取得は「初回ロード時」だけ。以降はモード切替時と定期更新でのみ取得する。
+    fetchPastHistory(() => {
+      updatePlaylistByMode();
+      relocateCurrentSong();
+      renderRankingUI();
+    });
+
+    if (!player || !player.getVideoData) {
+      loadCurrentSong(false);
     }
-
-    renderRankingUI();
-    updateTrackInfoDisplay();
-
-    if (isInitialLoad && currentPlaylist.length > 0) {
-      isInitialLoad = false;
-      if (!player || !player.getVideoData) {
-        loadCurrentSong(false);
-      }
-    }
-
-    checkAndSaveDailyHistory();
-  });
+  }
 });
+
+// ★ currentSongId（今表示すべき曲）を、再構築後のcurrentPlaylistの中から
+//   その都度「最新の値」で探し直す。決してcurrentIndexだけを信用しない。
+function relocateCurrentSong() {
+  if (!currentSongId) return;
+  const idx = currentPlaylist.findIndex(s => s.id === currentSongId);
+  if (idx !== -1) {
+    currentIndex = idx;
+  } else if (currentIndex >= currentPlaylist.length) {
+    currentIndex = Math.max(0, currentPlaylist.length - 1);
+  }
+}
 
 function saveAllToFirebase() {
   const dataObj = {};
@@ -335,15 +423,20 @@ function getRetentionRate(song) {
 // 🕒 毎日 0:00 バックアップ
 // --------------------------------------------------
 let isSavingSnapshot = false;
+let lastHistoryCheckDate = null;
 
 function checkAndSaveDailyHistory() {
   if (songs.length === 0 || isSavingSnapshot) return;
   const now = new Date();
   const dateStr = now.toISOString().split('T')[0];
 
+  if (lastHistoryCheckDate === dateStr) return; // 今日分は確認済みなら再チェックしない
+
   historyRef.child(dateStr).once('value', (snapshot) => {
     if (!snapshot.exists()) {
       saveDailySnapshot(dateStr);
+    } else {
+      lastHistoryCheckDate = dateStr;
     }
   });
 }
@@ -372,6 +465,7 @@ function saveDailySnapshot(dateStr) {
 
   historyRef.child(dateStr).set(snapshotData, () => {
     isSavingSnapshot = false;
+    lastHistoryCheckDate = dateStr;
   });
 }
 
@@ -398,11 +492,22 @@ function fetchPastHistory(callback) {
         }
       }
     }
-    
+
     initAnalyticsDropdowns();
     if (callback) callback();
   });
 }
+
+// 5分ごとにトレンド用の過去データを裏で更新（表示中がtrendingなら再描画）
+setInterval(() => {
+  fetchPastHistory(() => {
+    if (currentMode === 'trending') {
+      updatePlaylistByMode();
+      relocateCurrentSong();
+      renderRankingUI();
+    }
+  });
+}, 5 * 60 * 1000);
 
 // --------------------------------------------------
 // 🔥 アナリティクス機能
@@ -414,7 +519,7 @@ function initAnalyticsDropdowns() {
 
   const dates = Object.keys(allHistoryData).sort();
   const todayStr = new Date().toISOString().split('T')[0];
-  
+
   if (!dates.includes(todayStr)) {
     dates.push(todayStr);
   }
@@ -523,7 +628,7 @@ function renderAnalyticsTable() {
 }
 
 function exportAnalyticsCSV() {
-  if (analyticsCalculatedData.length === 0) return alert('データがありません。');
+  if (analyticsCalculatedData.length === 0) return showToast('データがありません。');
   const startDate = document.getElementById('analytics-start-date').value;
   const endDate = document.getElementById('analytics-end-date').value;
   const metricText = document.getElementById('analytics-metric').options[document.getElementById('analytics-metric').selectedIndex].text;
@@ -545,24 +650,38 @@ function exportAnalyticsCSV() {
 // --------------------------------------------------
 // モード選択とソート処理
 // --------------------------------------------------
-function updatePlaylistByMode() {
+function updatePlaylistByMode(forceReshuffle = false) {
   const analyticsContainer = document.getElementById('analytics-container');
   const rankList = document.getElementById('rank-list');
+  const searchBox = document.getElementById('rank-search');
 
   if (currentMode === 'analytics') {
     if (analyticsContainer) analyticsContainer.style.display = 'block';
     if (rankList) rankList.style.display = 'none';
+    if (searchBox) searchBox.style.display = 'none';
     renderAnalyticsTable();
     return;
   } else {
     if (analyticsContainer) analyticsContainer.style.display = 'none';
     if (rankList) rankList.style.display = 'block';
+    if (searchBox) searchBox.style.display = 'block';
   }
 
   if (currentMode === 'top20') {
     currentPlaylist = songs.slice(0, 20);
   } else if (currentMode === 'bottom') {
-    currentPlaylist = songs.slice(Math.floor(songs.length / 2)).sort(() => Math.random() - 0.5);
+    // ★ シャッフル順をキャッシュし、明示的な要求（forceReshuffle）がない限り
+    //   毎回の再同期でシャッフルし直さないようにする。曲の増減にはIDベースで追従。
+    const eligible = songs.slice(Math.floor(songs.length / 2));
+    const eligibleIds = new Set(eligible.map(s => s.id));
+
+    if (!shuffledOrderIds || forceReshuffle) {
+      shuffledOrderIds = eligible.map(s => s.id).sort(() => Math.random() - 0.5);
+    } else {
+      shuffledOrderIds = shuffledOrderIds.filter(id => eligibleIds.has(id));
+      eligible.forEach(s => { if (!shuffledOrderIds.includes(s.id)) shuffledOrderIds.push(s.id); });
+    }
+    currentPlaylist = shuffledOrderIds.map(id => songs.find(s => s.id === id)).filter(Boolean);
   } else if (currentMode === 'playCount') {
     currentPlaylist = [...songs].sort((a, b) => b.playCount - a.playCount);
   } else if (currentMode === 'trending') {
@@ -580,9 +699,30 @@ function setMode(mode, e) {
   document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
   e.target.classList.add('active');
   currentMode = mode;
-  updatePlaylistByMode();
+
+  const reshuffleBtn = document.getElementById('reshuffle-btn');
+  if (reshuffleBtn) reshuffleBtn.style.display = (mode === 'bottom') ? 'inline-block' : 'none';
+
+  const proceed = () => {
+    updatePlaylistByMode(mode === 'bottom');
+    currentIndex = 0;
+    if (currentMode !== 'analytics') {
+      loadCurrentSong(true);
+    }
+  };
+
+  if (mode === 'trending' || mode === 'analytics') {
+    fetchPastHistory(proceed);
+  } else {
+    proceed();
+  }
+}
+
+function reshuffleNow() {
+  if (currentMode !== 'bottom' || isTransitioning) return;
+  updatePlaylistByMode(true);
   currentIndex = 0;
-  if (currentMode !== 'analytics') loadCurrentSong(true);
+  loadCurrentSong(true);
 }
 
 // --------------------------------------------------
@@ -590,7 +730,7 @@ function setMode(mode, e) {
 // --------------------------------------------------
 function importCSVData() {
   const rawText = document.getElementById('csv-input').value.trim();
-  if (!rawText) return alert('CSVテキストを貼り付けてください。');
+  if (!rawText) return showToast('CSVテキストを貼り付けてください。');
 
   const lines = rawText.split(/\r?\n/);
   let updatedCount = 0;
@@ -603,7 +743,7 @@ function importCSVData() {
     for (let i = 0; i < line.length; i++) {
       const c = line[i];
       if (c === '"') {
-        if (inQuotes && line[i + 1] === '"') { cur += '"'; i++; } 
+        if (inQuotes && line[i + 1] === '"') { cur += '"'; i++; }
         else { inQuotes = !inQuotes; }
       } else if (c === ',' && !inQuotes) {
         result.push(cur.trim());
@@ -646,7 +786,7 @@ function importCSVData() {
 
   saveAllToFirebase();
   document.getElementById('csv-input').value = '';
-  alert(`CSVインポート完了！\n・既存曲のデータ加算: ${updatedCount} 件\n・スキップ（未登録曲）: ${ignoredCount} 件`);
+  showToast(`CSVインポート完了！ 加算:${updatedCount}件 / スキップ:${ignoredCount}件`);
 }
 
 // --------------------------------------------------
@@ -665,7 +805,7 @@ function moveCurrentSongToRank() {
   let targetRank = parseInt(targetInput.value);
 
   if (isNaN(targetRank) || targetRank < 1 || targetRank > songs.length) {
-    return alert(`1〜${songs.length}位の間で指定してください。`);
+    return showToast(`1〜${songs.length}位の間で指定してください。`);
   }
 
   const song = currentPlaylist[currentIndex];
@@ -705,7 +845,7 @@ function updateTrackInfoDisplay() {
     document.getElementById('display-total-time').innerText = `${Math.round(song.totalWatchTime / 60)}分`;
     document.getElementById('display-retention').innerText = `${Math.round(getRetentionRate(song))}%`;
     document.getElementById('display-year').innerText = song.year;
-    
+
     const tierObj = TIER_DEFINITIONS.find(t => t.code === song.tier) || { name: song.tier };
     document.getElementById('display-tier').innerText = `${song.tier} (${tierObj.name})`;
     document.getElementById('select-tier').value = song.tier;
@@ -717,54 +857,134 @@ function updateTrackInfoDisplay() {
 // 🎧 視聴計測 ＆ YouTube API 連動
 // --------------------------------------------------
 function onPlayerStateChange(event) {
+  const playPauseBtn = document.getElementById('play-pause-btn');
+
   if (event.data === YT.PlayerState.PLAYING) {
+    if (playPauseBtn) playPauseBtn.innerText = '⏸ 一時停止';
     startListeningTimer();
   } else {
+    if (playPauseBtn) playPauseBtn.innerText = '▶ 再生';
     stopListeningTimer();
   }
 
   if (event.data === YT.PlayerState.ENDED) {
-    stopListeningTimer();
     isManualSelection = false;
     setTimeout(() => { nextSong(); }, 200);
   }
 }
 
+function togglePlayPause() {
+  if (!player || !player.getPlayerState) return;
+  if (player.getPlayerState() === YT.PlayerState.PLAYING) {
+    player.pauseVideo();
+  } else {
+    player.playVideo();
+  }
+}
+
+// ★ 視聴データはactiveListeningSong（開始時に固定した曲の参照）に対して溜め、
+//   currentIndexが途中で変わっても誤った曲に書き込まれないようにする。
 function startListeningTimer() {
-  stopListeningTimer();
+  stopListeningTimer(); // 前の曲の分を先にflushしてから開始
+  activeListeningSong = currentPlaylist[currentIndex] || null;
+
   listenTimer = setInterval(() => {
-    if (!player || !player.getDuration) return;
+    if (!player || !player.getDuration || !activeListeningSong) return;
     const duration = player.getDuration();
     if (duration <= 0) return;
 
-    const song = currentPlaylist[currentIndex];
-    if (!song) return;
+    const song = activeListeningSong;
 
     if (!song.duration || song.duration !== Math.round(duration)) {
       song.duration = Math.round(duration);
-      db.ref(`music_chart/songs/${song.id}/duration`).set(song.duration);
+      pendingDurationUpdate = song.duration;
     }
 
     listenedSeconds++;
     song.totalWatchTime++;
-    db.ref(`music_chart/songs/${song.id}/totalWatchTime`).set(song.totalWatchTime);
+    pendingWatchSeconds++;
 
     const threshold = isManualSelection ? 0.1 : 0.3;
     if (!isCountedCurrentSong && (listenedSeconds / duration) >= threshold) {
       song.playCount++;
       isCountedCurrentSong = true;
-      db.ref(`music_chart/songs/${song.id}/playCount`).set(song.playCount);
+      pendingPlayIncrement = 1;
+    }
+
+    // 1秒ごとの書き込みをやめ、5秒ごと・再生カウント確定時にまとめて送る
+    if (pendingWatchSeconds >= FLUSH_INTERVAL_SECONDS || pendingPlayIncrement) {
+      flushListenData(song);
     }
   }, 1000);
 }
 
-function stopListeningTimer() { if (listenTimer) clearInterval(listenTimer); listenTimer = null; }
-function resetListenTimer() { stopListeningTimer(); listenedSeconds = 0; isCountedCurrentSong = false; }
+function flushListenData(song) {
+  if (!song) return;
+  if (pendingWatchSeconds === 0 && !pendingPlayIncrement && pendingDurationUpdate === null) return;
 
+  const updates = {};
+  updates[`music_chart/songs/${song.id}/totalWatchTime`] = song.totalWatchTime;
+  if (pendingPlayIncrement) updates[`music_chart/songs/${song.id}/playCount`] = song.playCount;
+  if (pendingDurationUpdate !== null) updates[`music_chart/songs/${song.id}/duration`] = pendingDurationUpdate;
+
+  db.ref().update(updates);
+
+  pendingWatchSeconds = 0;
+  pendingPlayIncrement = 0;
+  pendingDurationUpdate = null;
+}
+
+function stopListeningTimer() {
+  if (listenTimer) clearInterval(listenTimer);
+  listenTimer = null;
+  if (activeListeningSong) {
+    flushListenData(activeListeningSong);
+    activeListeningSong = null;
+  }
+}
+
+function resetListenTimer() {
+  stopListeningTimer();
+  listenedSeconds = 0;
+  isCountedCurrentSong = false;
+}
+
+window.addEventListener('beforeunload', () => {
+  if (activeListeningSong) flushListenData(activeListeningSong);
+});
+
+// --------------------------------------------------
+// 🎚 シークバー
+// --------------------------------------------------
+let seekBarTimer = null;
+function seekVideo(percent) {
+  if (!player || !player.getDuration) return;
+  const duration = player.getDuration();
+  if (!duration) return;
+  player.seekTo(duration * (percent / 100), true);
+}
+
+function startSeekBarUpdater() {
+  if (seekBarTimer) clearInterval(seekBarTimer);
+  seekBarTimer = setInterval(() => {
+    const bar = document.getElementById('seek-bar');
+    if (!bar || !player || !player.getDuration || !player.getCurrentTime) return;
+    if (document.activeElement === bar) return; // ユーザーがドラッグ中は上書きしない
+    const duration = player.getDuration();
+    if (!duration) return;
+    bar.value = (player.getCurrentTime() / duration) * 100;
+  }, 1000);
+}
+
+// --------------------------------------------------
+// ランキング表示
+// --------------------------------------------------
 function renderRankingUI() {
   if (currentMode === 'analytics') return;
 
   const listEl = document.getElementById('rank-list');
+  const searchInput = document.getElementById('rank-search');
+  const searchTerm = searchInput ? searchInput.value.trim().toLowerCase() : '';
   listEl.innerHTML = '';
   const currentSong = currentPlaylist[currentIndex];
 
@@ -772,6 +992,8 @@ function renderRankingUI() {
   const targetList = (currentMode === 'playCount' || currentMode === 'trending') ? currentPlaylist : songs;
 
   targetList.forEach((song, index) => {
+    if (searchTerm && !song.title.toLowerCase().includes(searchTerm)) return;
+
     if (currentMode !== 'playCount' && currentMode !== 'trending' && song.tier !== lastTier) {
       const tierObj = TIER_DEFINITIONS.find(t => t.code === song.tier);
       const header = document.createElement('li');
@@ -787,10 +1009,11 @@ function renderRankingUI() {
 
     li.onclick = (e) => {
       e.stopPropagation();
+      if (isTransitioning) return;
       let idx = currentPlaylist.findIndex(s => s.id === song.id);
-      if (idx !== -1) { 
+      if (idx !== -1) {
         isManualSelection = true;
-        currentIndex = idx; 
+        currentIndex = idx;
         loadCurrentSong(true);
       }
     };
@@ -812,8 +1035,18 @@ function renderRankingUI() {
     `;
     listEl.appendChild(li);
   });
+
+  if (listEl.children.length === 0) {
+    const empty = document.createElement('li');
+    empty.style.cssText = 'padding:15px;color:#888;text-align:center;background:transparent;cursor:default;';
+    empty.innerText = searchTerm ? '該当する曲が見つかりません' : '曲がありません';
+    listEl.appendChild(empty);
+  }
 }
 
+// --------------------------------------------------
+// 曲の読み込み・切り替え
+// --------------------------------------------------
 function loadCurrentSong(shouldPlay = true) {
   if (!currentPlaylist || currentPlaylist.length === 0) return;
   if (currentIndex < 0 || currentIndex >= currentPlaylist.length) currentIndex = 0;
@@ -821,9 +1054,16 @@ function loadCurrentSong(shouldPlay = true) {
   const song = currentPlaylist[currentIndex];
   if (!song || !song.youtubeId) return;
 
+  // ★ ここで即座に「今の曲」を確定させる。以降どんな非同期処理が来ても
+  //   この値を基準に画面表示・ランキングが同期されるので巻き戻りが起きない。
+  currentSongId = song.id;
+
   resetListenTimer();
   updateTrackInfoDisplay();
   renderRankingUI();
+
+  const bar = document.getElementById('seek-bar');
+  if (bar) bar.value = 0;
 
   if (player && typeof player.loadVideoById === 'function') {
     try {
@@ -854,6 +1094,7 @@ function onYouTubeIframeAPIReady() {
     events: {
       'onReady': () => {
         if (currentPlaylist.length > 0) loadCurrentSong(false);
+        startSeekBarUpdater();
       },
       'onStateChange': onPlayerStateChange,
       'onError': () => { setTimeout(() => { nextSong(); }, 2000); }
@@ -861,19 +1102,44 @@ function onYouTubeIframeAPIReady() {
   });
 }
 
+function setNavButtonsDisabled(disabled) {
+  const prevBtn = document.getElementById('prev-btn');
+  const nextBtn = document.getElementById('next-btn');
+  if (prevBtn) prevBtn.disabled = disabled;
+  if (nextBtn) nextBtn.disabled = disabled;
+}
+
 function nextSong() {
-  if (currentPlaylist.length === 0) return;
+  if (currentPlaylist.length === 0 || isTransitioning) return;
+  isTransitioning = true;
+  setNavButtonsDisabled(true);
   isManualSelection = false;
   currentIndex = (currentIndex + 1) % currentPlaylist.length;
   loadCurrentSong(true);
+  setTimeout(() => { isTransitioning = false; setNavButtonsDisabled(false); }, 400);
 }
 
 function prevSong() {
-  if (currentPlaylist.length === 0) return;
+  if (currentPlaylist.length === 0 || isTransitioning) return;
+  isTransitioning = true;
+  setNavButtonsDisabled(true);
   isManualSelection = false;
   currentIndex = (currentIndex - 1 + currentPlaylist.length) % currentPlaylist.length;
   loadCurrentSong(true);
+  setTimeout(() => { isTransitioning = false; setNavButtonsDisabled(false); }, 400);
 }
+
+// --------------------------------------------------
+// ⌨️ キーボードショートカット（← → で曲送り、スペースで再生/一時停止）
+// --------------------------------------------------
+document.addEventListener('keydown', (e) => {
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+
+  if (e.key === 'ArrowRight') { nextSong(); }
+  else if (e.key === 'ArrowLeft') { prevSong(); }
+  else if (e.key === ' ') { e.preventDefault(); togglePlayPause(); }
+});
 
 function addNewSong() {
   const titleInput = document.getElementById('input-title');
@@ -881,7 +1147,7 @@ function addNewSong() {
   const yearInput = document.getElementById('input-year');
   const tierInput = document.getElementById('input-tier');
 
-  if (!titleInput.value.trim() || !ytidInput) return alert('入力してください');
+  if (!titleInput.value.trim() || !ytidInput) return showToast('入力してください');
 
   if (ytidInput.includes('v=')) ytidInput = ytidInput.split('v=')[1].split('&')[0];
   else if (ytidInput.includes('youtu.be/')) ytidInput = ytidInput.split('youtu.be/')[1].split('?')[0];
@@ -902,6 +1168,7 @@ function addNewSong() {
   db.ref(`music_chart/songs/${newId}`).set(newSong);
   titleInput.value = '';
   document.getElementById('input-ytid').value = '';
+  showToast('曲を追加しました');
 }
 
 function deleteSong(id, e) {
@@ -912,7 +1179,7 @@ function deleteSong(id, e) {
 }
 
 function exportData() {
-  if (songs.length === 0) return alert('保存するデータがありません。');
+  if (songs.length === 0) return showToast('保存するデータがありません。');
   const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(songs, null, 2));
   const a = document.createElement('a');
   a.href = dataStr;
@@ -936,11 +1203,11 @@ function importData(event) {
             order: idx
           }));
           saveAllToFirebase();
-          alert('Firebaseへのデータ復元完了！');
+          showToast('Firebaseへのデータ復元完了！');
         }
       }
     } catch (err) {
-      alert('ファイルの読み込みに失敗しました。');
+      showToast('ファイルの読み込みに失敗しました。');
     }
   };
   reader.readAsText(file);
@@ -948,3 +1215,4 @@ function importData(event) {
 </script>
 </body>
 </html>
+
