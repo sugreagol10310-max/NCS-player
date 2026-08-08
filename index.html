@@ -14,12 +14,25 @@
       padding: 20px;
     }
     h1, h2 { color: #00ffcc; }
-    .container { max-width: 900px; margin: 0 auto; }
+    .container { max-width: 1300px; margin: 0 auto; }
     .card {
       background-color: #1e1e1e;
       border-radius: 8px;
       padding: 15px;
       margin-bottom: 20px;
+    }
+    .main-layout {
+      display: grid;
+      grid-template-columns: 400px 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+    .left-col { position: sticky; top: 20px; }
+    .right-col { min-width: 0; }
+    @media (max-width: 860px) {
+      .main-layout { grid-template-columns: 1fr; }
+      .left-col { position: static; }
+      .rank-list { max-height: none !important; }
     }
     button {
       background-color: #00ffcc;
@@ -44,8 +57,8 @@
     }
     textarea { width: 100%; height: 80px; box-sizing: border-box; }
     .player-container { text-align: center; margin-bottom: 15px; }
-    #player { width: 100%; max-width: 560px; height: 315px; background: #000; margin: 0 auto; }
-    #seek-bar { width: 100%; max-width: 560px; margin-top: 8px; accent-color: #00ffcc; }
+    #player { width: 100%; aspect-ratio: 16 / 9; height: auto; background: #000; margin: 0 auto; }
+    #seek-bar { width: 100%; margin-top: 8px; accent-color: #00ffcc; }
 
     ul.rank-list { list-style: none; padding: 0; }
     li.rank-item {
@@ -77,8 +90,12 @@
     }
     .rank-name { flex-grow: 1; font-weight: bold; }
     .rank-del-btn { background: #ff4444; color: #fff; padding: 2px 6px; font-size: 10px; }
+    .rank-move-btn { background: #555; color: #fff; padding: 2px 7px; font-size: 12px; margin-right: 2px; }
+    .rank-move-btn:hover { background: #777; }
+    .rank-playcount { font-size: 16px; font-weight: bold; color: #00ffcc; margin-right: 10px; }
 
     #rank-search { width: 100%; box-sizing: border-box; margin-bottom: 10px; }
+    .rank-list { max-height: 75vh; overflow-y: auto; padding-right: 4px; }
 
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
     th { background: #2a2a2a; padding: 8px; border-bottom: 2px solid #444; }
@@ -126,39 +143,47 @@
     <button class="mode-btn" onclick="setMode('analytics', event)">📊 アナリティクス</button>
   </div>
 
-  <div class="card player-container">
-    <div id="player"></div>
-    <input type="range" id="seek-bar" min="0" max="100" value="0" oninput="seekVideo(this.value)">
-    <div style="margin-top: 10px;">
-      <button id="prev-btn" onclick="prevSong()">⏮ 前の曲</button>
-      <button id="play-pause-btn" onclick="togglePlayPause()">⏸ 一時停止</button>
-      <button id="next-btn" onclick="nextSong()">⏭ 次の曲</button>
-      <button id="reshuffle-btn" onclick="reshuffleNow()" style="display:none;">🔀 シャッフルし直す</button>
+  <div class="main-layout">
+    <div class="left-col">
+      <div class="card player-container">
+        <div id="player"></div>
+        <input type="range" id="seek-bar" min="0" max="100" value="0" oninput="seekVideo(this.value)">
+        <div style="margin-top: 10px;">
+          <button id="prev-btn" onclick="prevSong()">⏮ 前の曲</button>
+          <button id="play-pause-btn" onclick="togglePlayPause()">⏸ 一時停止</button>
+          <button id="next-btn" onclick="nextSong()">⏭ 次の曲</button>
+          <button id="reshuffle-btn" onclick="reshuffleNow()" style="display:none;">🔀 シャッフルし直す</button>
+        </div>
+        <div style="margin-top: 10px; text-align: left; background: #2a2a2a; padding: 10px; border-radius: 4px;">
+          <div><strong>曲名:</strong> <span id="display-title">-</span></div>
+          <div>
+            再生数: <span id="display-plays">0</span>回 | 
+            総再生時間: <span id="display-total-time">0分</span> | 
+            維持率: <span id="display-retention">0%</span> | 
+            リリース: <span id="display-year">-</span>年
+          </div>
+          <div>
+            Tier: <span id="display-tier">-</span>
+            <select id="select-tier" onchange="changeCurrentSongTier(this.value)"></select>
+          </div>
+          <div style="margin-top: 5px;">
+            順位変更: 
+            <input type="number" id="input-direct-rank" placeholder="順位" style="width: 60px;">
+            <button onclick="moveCurrentSongToRank()">移動</button>
+            <button onclick="moveCurrentSongStep(-1)">↑ 1つ上へ</button>
+            <button onclick="moveCurrentSongStep(1)">↓ 1つ下へ</button>
+          </div>
+        </div>
+      </div>
     </div>
-    <div style="margin-top: 10px; text-align: left; background: #2a2a2a; padding: 10px; border-radius: 4px;">
-      <div><strong>曲名:</strong> <span id="display-title">-</span></div>
-      <div>
-        再生数: <span id="display-plays">0</span>回 | 
-        総再生時間: <span id="display-total-time">0分</span> | 
-        維持率: <span id="display-retention">0%</span> | 
-        リリース: <span id="display-year">-</span>年
-      </div>
-      <div>
-        Tier: <span id="display-tier">-</span>
-        <select id="select-tier" onchange="changeCurrentSongTier(this.value)"></select>
-      </div>
-      <div style="margin-top: 5px;">
-        順位変更: 
-        <input type="number" id="input-direct-rank" placeholder="順位" style="width: 60px;">
-        <button onclick="moveCurrentSongToRank()">移動</button>
-        <button onclick="moveCurrentSongStep(-1)">↑ 1つ上へ</button>
-        <button onclick="moveCurrentSongStep(1)">↓ 1つ下へ</button>
+
+    <div class="right-col">
+      <div class="card">
+        <input type="text" id="rank-search" placeholder="🔍 曲名で検索..." oninput="renderRankingUI()">
+        <ul id="rank-list" class="rank-list"></ul>
       </div>
     </div>
   </div>
-
-  <input type="text" id="rank-search" placeholder="🔍 曲名で検索..." oninput="renderRankingUI()">
-  <ul id="rank-list" class="rank-list"></ul>
 
   <div id="analytics-container" class="card" style="display: none;">
     <h2>📊 期間別アナリティクス比較</h2>
@@ -703,12 +728,13 @@ function setMode(mode, e) {
   const reshuffleBtn = document.getElementById('reshuffle-btn');
   if (reshuffleBtn) reshuffleBtn.style.display = (mode === 'bottom') ? 'inline-block' : 'none';
 
+  // ★ タブ（モード）切替では曲を変えない。ランキングの並びだけを差し替え、
+  //   再生中の曲は継続する。今流れている曲の位置は currentSongId から探し直す。
   const proceed = () => {
     updatePlaylistByMode(mode === 'bottom');
-    currentIndex = 0;
-    if (currentMode !== 'analytics') {
-      loadCurrentSong(true);
-    }
+    relocateCurrentSong();
+    renderRankingUI();
+    updateTrackInfoDisplay();
   };
 
   if (mode === 'trending' || mode === 'analytics') {
@@ -721,8 +747,9 @@ function setMode(mode, e) {
 function reshuffleNow() {
   if (currentMode !== 'bottom' || isTransitioning) return;
   updatePlaylistByMode(true);
-  currentIndex = 0;
-  loadCurrentSong(true);
+  relocateCurrentSong();
+  renderRankingUI();
+  updateTrackInfoDisplay();
 }
 
 // --------------------------------------------------
@@ -797,6 +824,20 @@ function changeCurrentSongTier(newTier) {
   const song = currentPlaylist[currentIndex];
   song.tier = newTier;
   db.ref(`music_chart/songs/${song.id}/tier`).set(newTier);
+}
+
+// ★ 全曲リスト（好きな曲ランキング）モードで、再生中でない曲同士も
+//   直接クリックで入れ替えられるようにする
+function swapSongOrder(songId, direction, e) {
+  if (e) e.stopPropagation();
+  const idx = songs.findIndex(s => s.id === songId);
+  if (idx === -1) return;
+  const newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= songs.length) return;
+  const tmp = songs[idx];
+  songs[idx] = songs[newIdx];
+  songs[newIdx] = tmp;
+  saveAllToFirebase();
 }
 
 function moveCurrentSongToRank() {
@@ -1020,14 +1061,24 @@ function renderRankingUI() {
 
     let metaStatsHtml = '';
     if (currentMode === 'playCount') {
-      metaStatsHtml = `<span style="font-size: 11px; color: #00ffcc; margin-right: 8px;">👀 ${song.playCount}回</span>`;
+      metaStatsHtml = `<span class="rank-playcount">👀 ${song.playCount}回</span>`;
     } else if (currentMode === 'trending') {
       const pastPlays = pastSnapshotData ? (pastSnapshotData[song.id]?.playCount || 0) : 0;
-      metaStatsHtml = `<span style="font-size: 11px; color: #ffaa00; font-weight: bold; margin-right: 8px;">🔥 +${song.playCount - pastPlays}回</span>`;
+      metaStatsHtml = `<span style="font-size: 15px; color: #ffaa00; font-weight: bold; margin-right: 8px;">🔥 +${song.playCount - pastPlays}回</span>`;
+    }
+
+    // ★ 全曲リストモードでは、隣の曲と直接順位を入れ替えられる▲▼ボタンを表示
+    let moveButtonsHtml = '';
+    if (currentMode === 'all') {
+      moveButtonsHtml = `
+        <button class="rank-move-btn" title="1つ上へ" onclick="swapSongOrder('${song.id}', -1, event)">▲</button>
+        <button class="rank-move-btn" title="1つ下へ" onclick="swapSongOrder('${song.id}', 1, event)">▼</button>
+      `;
     }
 
     li.innerHTML = `
       <span class="rank-num">${index + 1}位</span>
+      ${moveButtonsHtml}
       <span class="rank-tier-tag">${song.tier}</span>
       <span class="rank-name">${song.title}</span>
       ${metaStatsHtml}
@@ -1114,6 +1165,7 @@ function nextSong() {
   isTransitioning = true;
   setNavButtonsDisabled(true);
   isManualSelection = false;
+  relocateCurrentSong(); // タブ切替後でも「今流れている曲」を今のプレイリストの中で探し直す
   currentIndex = (currentIndex + 1) % currentPlaylist.length;
   loadCurrentSong(true);
   setTimeout(() => { isTransitioning = false; setNavButtonsDisabled(false); }, 400);
@@ -1124,6 +1176,7 @@ function prevSong() {
   isTransitioning = true;
   setNavButtonsDisabled(true);
   isManualSelection = false;
+  relocateCurrentSong();
   currentIndex = (currentIndex - 1 + currentPlaylist.length) % currentPlaylist.length;
   loadCurrentSong(true);
   setTimeout(() => { isTransitioning = false; setNavButtonsDisabled(false); }, 400);
