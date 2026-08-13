@@ -233,7 +233,7 @@
         <option value="avgRetention">平均維持率(%)</option>
       </select>
     </label>
-    <div id="overall-trend-chart-container" style="margin-top: 10px; overflow-x: auto; background: #181818; border-radius: 6px; padding: 8px 0;"></div>
+    <div id="overall-trend-chart-container" style="position: relative; margin-top: 10px; overflow-x: auto; background: #181818; border-radius: 6px; padding: 8px 0;"></div>
   </div>
 
 
@@ -772,9 +772,11 @@ function renderOverallTrendChart() {
   const linePath = coords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(' ');
 
   const circles = coords.map(c => `
-    <circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="4" fill="#00ffcc" stroke="#121212" stroke-width="1.5">
-      <title>${c.date} : ${c.value}</title>
-    </circle>
+    <circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="4" fill="#00ffcc" stroke="#121212" stroke-width="1.5" pointer-events="none"></circle>
+    <circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="10" fill="transparent" style="cursor:pointer;"
+      onmouseenter="showChartTooltip(event, '${c.date}', ${c.value})"
+      onmousemove="moveChartTooltip(event)"
+      onmouseleave="hideChartTooltip()"></circle>
   `).join('');
 
   const labelEvery = Math.max(1, Math.ceil(points.length / 14));
@@ -801,7 +803,32 @@ function renderOverallTrendChart() {
       ${circles}
       ${xLabels}
     </svg>
+    <div id="chart-tooltip" style="position:absolute; display:none; background:#00ffcc; color:#000; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:bold; pointer-events:none; white-space:nowrap; z-index:10; box-shadow:0 2px 6px rgba(0,0,0,0.4);"></div>
   `;
+}
+
+function showChartTooltip(e, date, value) {
+  const tooltip = document.getElementById('chart-tooltip');
+  if (!tooltip) return;
+  tooltip.innerText = `${date} : ${value}`;
+  tooltip.style.display = 'block';
+  moveChartTooltip(e);
+}
+
+function moveChartTooltip(e) {
+  const tooltip = document.getElementById('chart-tooltip');
+  const container = document.getElementById('overall-trend-chart-container');
+  if (!tooltip || !container) return;
+  const rect = container.getBoundingClientRect();
+  const x = e.clientX - rect.left + container.scrollLeft;
+  const y = e.clientY - rect.top + container.scrollTop;
+  tooltip.style.left = Math.max(0, x + 12) + 'px';
+  tooltip.style.top = Math.max(0, y - 32) + 'px';
+}
+
+function hideChartTooltip() {
+  const tooltip = document.getElementById('chart-tooltip');
+  if (tooltip) tooltip.style.display = 'none';
 }
 
 function renderAnalyticsTable() {
