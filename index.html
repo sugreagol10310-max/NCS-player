@@ -139,8 +139,10 @@
     <button class="mode-btn" onclick="setMode('top20', event)">Top 20</button>
     <button class="mode-btn" onclick="setMode('bottom', event)">シャッフル再生</button>
     <button class="mode-btn" onclick="setMode('playCount', event)">再生数順</button>
+    <button class="mode-btn" onclick="setMode('watchTime', event)">🕒 再生時間順</button>
     <button class="mode-btn" onclick="setMode('trending', event)">トレンド順</button>
     <button class="mode-btn" onclick="setMode('analytics', event)">📊 アナリティクス</button>
+    <div id="trending-info" style="display:none; font-size:12px; color:#888; margin-top:8px;"></div>
   </div>
 
   <div class="main-layout">
@@ -192,17 +194,26 @@
       <label>終了日: <select id="analytics-end-date" onchange="renderAnalyticsTable()"></select></label>
       <label>指標: 
         <select id="analytics-metric" onchange="renderAnalyticsTable()">
-          <option value="playCount">再生回数 (回)</option>
-          <option value="watchTime">総再生時間 (分)</option>
-          <option value="retentionRate">維持率 (%)</option>
-          <option value="trending">増加数トレンド</option>
+          <option value="playCount">視聴回数の増加分 (回)</option>
+          <option value="watchTime">視聴時間の増加分 (分)</option>
+          <option value="retentionRate">視聴維持率の増減 (%)</option>
+          <option value="rankChange">好き度ランキングの変動 (順位)</option>
         </select>
       </label>
       <button onclick="exportAnalyticsCSV()">CSV出力</button>
     </div>
+    <div style="margin-top: 6px;">
+      <label>
+        <input type="checkbox" id="analytics-simple-rank-mode" onchange="renderAnalyticsTable()">
+        単純ランキング表示（終了日時点の好き度ランキングをそのまま見る）
+      </label>
+    </div>
+    <div id="analytics-note" style="font-size: 12px; color: #888; margin-top: 6px;">
+      ※ 好き度ランキングの変動は、開始日時点のデータが存在しない曲は「NEW」と表示し、順位変動の並び替え対象からは除外されます（同着はABC順）。
+    </div>
     <table>
       <thead>
-        <tr>
+        <tr id="analytics-thead-row">
           <th>順位</th>
           <th>曲名</th>
           <th>開始時点</th>
@@ -213,6 +224,7 @@
       <tbody id="analytics-table-body"></tbody>
     </table>
   </div>
+
 
   <div class="card">
     <h3>➕ 新規曲追加</h3>
@@ -324,6 +336,12 @@ let pastSnapshotData = null;
 let allHistoryData = {};
 let analyticsCalculatedData = [];
 let isInitialLoad = true;
+
+// ★ トレンド順（前々回火曜〜前回火曜の視聴回数増加分）用のスナップショット
+let trendStartSnapshot = null; // 前々回火曜時点
+let trendEndSnapshot = null;   // 前回火曜時点
+let trendStartDateUsed = null;
+let trendEndDateUsed = null;
 
 // ★ シャッフル順のキャッシュ（毎回シャッフルし直さないようにする）
 let shuffledOrderIds = null;
@@ -494,33 +512,71 @@ function saveDailySnapshot(dateStr) {
   });
 }
 
+// --------------------------------------------------
+// 📅 「前回の火曜日」「前々回の火曜日」を求めるヘルパー
+//    例: 今日が2026/8/13(木)の場合 → 前回火曜=8/11、前々回火曜=8/4
+// --------------------------------------------------
+function formatDateStr(d) {
+  return d.toISOString().split('T')[0];
+}
+
+function getPreviousTuesday(baseDate) {
+  const d = new Date(baseDate);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay(); // 0=日, 1=月, 2=火, ...
+  let diff = (day - 2 + 7) % 7;
+  if (diff === 0) diff = 7; // 今日が火曜日なら「前回」は1週間前の火曜日にする
+  d.setDate(d.getDate() - diff);
+  return d;
+}
+
+function getWeekBeforeTuesday(tuesdayDate) {
+  const d = new Date(tuesdayDate);
+  d.setDate(d.getDate() - 7);
+  return d;
+}
+
+// 指定日以前で、実際にスナップショットが存在する最も新しい日付を探す（欠測日への保険）
+function findClosestPastSnapshotDate(targetDateStr, availableDatesSorted) {
+  const candidates = availableDatesSorted.filter(d => d <= targetDateStr);
+  return candidates.length > 0 ? candidates[candidates.length - 1] : null;
+}
+
 function fetchPastHistory(callback) {
   historyRef.once('value', (snapshot) => {
     allHistoryData = snapshot.val() || {};
-    pastSnapshotData = null;
+    const availableDates = Object.keys(allHistoryData).sort();
 
-    if (allHistoryData) {
-      const dates = Object.keys(allHistoryData).sort();
-      const todayStr = new Date().toISOString().split('T')[0];
-      const validPastDates = dates.filter(d => d < todayStr);
+    // --- トレンド順: 前々回火曜 → 前回火曜 の固定週間ウィンドウを算出 ---
+    const today = new Date();
+    const lastTuesday = getPreviousTuesday(today);
+    const weekBeforeTuesday = getWeekBeforeTuesday(lastTuesday);
+    const lastTuesdayStr = formatDateStr(lastTuesday);
+    const weekBeforeStr = formatDateStr(weekBeforeTuesday);
 
-      if (validPastDates.length > 0) {
-        const pastTargetDate = new Date();
-        pastTargetDate.setDate(pastTargetDate.getDate() - 7);
-        const targetStr = pastTargetDate.toISOString().split('T')[0];
+    trendEndDateUsed = findClosestPastSnapshotDate(lastTuesdayStr, availableDates);
+    trendStartDateUsed = findClosestPastSnapshotDate(weekBeforeStr, availableDates);
 
-        const olderDates = validPastDates.filter(d => d <= targetStr);
-        let chosenDate = (olderDates.length > 0) ? olderDates[olderDates.length - 1] : validPastDates[0];
+    trendEndSnapshot = trendEndDateUsed ? (allHistoryData[trendEndDateUsed]?.songs || null) : null;
+    trendStartSnapshot = trendStartDateUsed ? (allHistoryData[trendStartDateUsed]?.songs || null) : null;
 
-        if (chosenDate) {
-          pastSnapshotData = allHistoryData[chosenDate]?.songs || null;
-        }
-      }
-    }
+    // 後方互換用（他の場所から参照される可能性に備えて残す）
+    pastSnapshotData = trendStartSnapshot;
 
     initAnalyticsDropdowns();
     if (callback) callback();
   });
+}
+
+function updateTrendingInfoLabel() {
+  const el = document.getElementById('trending-info');
+  if (!el) return;
+  if (currentMode === 'trending' && trendStartDateUsed && trendEndDateUsed) {
+    el.style.display = 'block';
+    el.innerText = `📅 ${trendStartDateUsed} 〜 ${trendEndDateUsed} の視聴回数増加分で並び替え中`;
+  } else {
+    el.style.display = 'none';
+  }
 }
 
 // 5分ごとにトレンド用の過去データを裏で更新（表示中がtrendingなら再描画）
@@ -530,6 +586,7 @@ setInterval(() => {
       updatePlaylistByMode();
       relocateCurrentSong();
       renderRankingUI();
+      updateTrendingInfoLabel();
     }
   });
 }, 5 * 60 * 1000);
@@ -585,91 +642,203 @@ function getSongSnapshotData(dateStr, song, isEndDate) {
     };
   }
 
-  return {
-    playCount: song.playCount || 0,
-    totalWatchTime: song.totalWatchTime || 0,
-    retentionRate: Math.round(getRetentionRate(song)),
-    duration: song.duration
-  };
+  return null; // その日のスナップショットに曲が存在しない（＝まだ登録されていなかった）
+}
+
+// ★ 好き度ランキング（tierリストの並び順）における、その日時点での順位を取得
+//   データが無ければ null を返す（＝NEW判定に使う）
+function getSongRankAtDate(dateStr, song) {
+  const todayStr = new Date().toISOString().split('T')[0];
+  if (dateStr === todayStr) {
+    return song.order + 1;
+  }
+  const snap = allHistoryData[dateStr]?.songs?.[song.id];
+  return (snap && snap.rank) ? snap.rank : null;
+}
+
+// ★ 指定日時点の好き度ランキングを丸ごと取得する（単純ランキング表示モード用）
+function getSongsRankingAtDate(dateStr) {
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  if (dateStr === todayStr) {
+    return [...songs].sort((a, b) => a.order - b.order).map((s, idx) => ({
+      id: s.id,
+      title: s.title,
+      tier: s.tier,
+      rank: idx + 1,
+      playCount: s.playCount || 0,
+      retentionRate: Math.round(getRetentionRate(s))
+    }));
+  }
+
+  const snapSongs = allHistoryData[dateStr]?.songs;
+  if (!snapSongs) return [];
+
+  return Object.keys(snapSongs).map(id => {
+    const snap = snapSongs[id];
+    return {
+      id,
+      title: snap.title,
+      tier: snap.tier,
+      rank: snap.rank || 9999,
+      playCount: snap.playCount || 0,
+      retentionRate: snap.retentionRate || 0
+    };
+  }).sort((a, b) => a.rank - b.rank);
 }
 
 function renderAnalyticsTable() {
   const startDate = document.getElementById('analytics-start-date').value;
   const endDate = document.getElementById('analytics-end-date').value;
   const metric = document.getElementById('analytics-metric').value;
+  const simpleMode = document.getElementById('analytics-simple-rank-mode').checked;
   const tableBody = document.getElementById('analytics-table-body');
+  const theadRow = document.getElementById('analytics-thead-row');
+  const noteEl = document.getElementById('analytics-note');
 
   if (!startDate || !endDate) return;
 
-  analyticsCalculatedData = songs.map(song => {
-    const startData = getSongSnapshotData(startDate, song, false);
-    const endData = getSongSnapshotData(endDate, song, true);
+  // --- 単純ランキング表示モード：終了日時点の好き度ランキングをそのまま見る ---
+  if (simpleMode) {
+    if (noteEl) noteEl.style.display = 'none';
+    theadRow.innerHTML = `<th>順位</th><th>曲名</th><th>Tier</th><th>再生数</th><th>維持率</th>`;
 
+    const ranking = getSongsRankingAtDate(endDate);
+    analyticsCalculatedData = ranking;
+
+    tableBody.innerHTML = '';
+    ranking.forEach(item => {
+      const tr = document.createElement('tr');
+      tr.style.borderBottom = '1px solid #333';
+      tr.innerHTML = `
+        <td style="padding: 8px; text-align: center; color: #ffaa00; font-weight: bold;">${item.rank}</td>
+        <td style="padding: 8px; font-weight: bold;">${item.title}</td>
+        <td style="padding: 8px; text-align: center;">${item.tier}</td>
+        <td style="padding: 8px; text-align: center; color: #888;">${item.playCount}回</td>
+        <td style="padding: 8px; text-align: center; color: #888;">${item.retentionRate}%</td>
+      `;
+      tableBody.appendChild(tr);
+    });
+    return;
+  }
+
+  // --- 期間比較モード ---
+  if (noteEl) noteEl.style.display = (metric === 'rankChange') ? 'block' : 'none';
+  theadRow.innerHTML = `<th>順位</th><th>曲名</th><th>開始時点</th><th>終了時点</th><th>期間内変化</th>`;
+
+  analyticsCalculatedData = songs.map(song => {
     let valStart = 0;
     let valEnd = 0;
     let valDiff = 0;
     let unit = '';
+    let isNew = false;
 
-    if (metric === 'playCount') {
-      valStart = startData.playCount || 0;
-      valEnd = endData.playCount || 0;
-      valDiff = valEnd - valStart;
-      unit = '回';
-    } else if (metric === 'watchTime') {
-      valStart = Math.round((startData.totalWatchTime || 0) / 60);
-      valEnd = Math.round((endData.totalWatchTime || 0) / 60);
-      valDiff = valEnd - valStart;
-      unit = '分';
-    } else if (metric === 'retentionRate') {
-      valStart = startData.retentionRate || 0;
-      valEnd = endData.retentionRate || 0;
-      valDiff = valEnd;
-      unit = '%';
-    } else if (metric === 'trending') {
-      valStart = startData.playCount || 0;
-      valEnd = endData.playCount || 0;
-      valDiff = valEnd - valStart;
-      unit = '回増加';
+    if (metric === 'rankChange') {
+      const startRank = getSongRankAtDate(startDate, song);
+      const endRank = getSongRankAtDate(endDate, song);
+      if (startRank === null) {
+        isNew = true;
+        valEnd = endRank !== null ? endRank : '-';
+      } else {
+        valStart = startRank;
+        valEnd = endRank !== null ? endRank : startRank;
+        valDiff = valStart - valEnd; // 数値が小さい方が上位なので、上がった分はプラスにする
+        unit = '位';
+      }
+    } else {
+      const startData = getSongSnapshotData(startDate, song, false);
+      const endData = getSongSnapshotData(endDate, song, true);
+
+      if (!startData) {
+        isNew = true;
+      } else {
+        if (metric === 'playCount') {
+          valStart = startData.playCount || 0;
+          valEnd = (endData ? endData.playCount : song.playCount) || 0;
+          valDiff = valEnd - valStart;
+          unit = '回';
+        } else if (metric === 'watchTime') {
+          valStart = Math.round((startData.totalWatchTime || 0) / 60);
+          valEnd = Math.round(((endData ? endData.totalWatchTime : song.totalWatchTime) || 0) / 60);
+          valDiff = valEnd - valStart;
+          unit = '分';
+        } else if (metric === 'retentionRate') {
+          valStart = startData.retentionRate || 0;
+          valEnd = (endData ? endData.retentionRate : Math.round(getRetentionRate(song))) || 0;
+          valDiff = valEnd - valStart;
+          unit = '%';
+        }
+      }
     }
 
-    return { id: song.id, title: song.title, tier: song.tier, valStart, valEnd, valDiff, unit };
+    return { id: song.id, title: song.title, tier: song.tier, valStart, valEnd, valDiff, unit, isNew };
   });
 
-  analyticsCalculatedData.sort((a, b) => b.valDiff - a.valDiff);
+  // ★ NEWは対象外として末尾へ。上昇幅が同じ曲はABC順（タイトルの辞書順）
+  analyticsCalculatedData.sort((a, b) => {
+    if (a.isNew && b.isNew) return a.title.localeCompare(b.title, 'ja');
+    if (a.isNew) return 1;
+    if (b.isNew) return -1;
+    if (b.valDiff !== a.valDiff) return b.valDiff - a.valDiff;
+    return a.title.localeCompare(b.title, 'ja');
+  });
 
   tableBody.innerHTML = '';
   analyticsCalculatedData.forEach((item, idx) => {
     const tr = document.createElement('tr');
     tr.style.borderBottom = '1px solid #333';
+
+    const startDisplay = item.isNew ? 'NEW' : `${item.valStart}${item.unit}`;
+    const endDisplay = `${item.valEnd}${item.unit}`;
+    const diffDisplay = item.isNew ? 'NEW' : `${item.valDiff > 0 ? '+' : ''}${item.valDiff}${item.unit}`;
+    const diffColor = item.isNew ? '#ffaa00' : '#00ffcc';
+
     tr.innerHTML = `
       <td style="padding: 8px; text-align: center; color: #ffaa00; font-weight: bold;">${idx + 1}</td>
       <td style="padding: 8px; font-weight: bold;">${item.title}</td>
-      <td style="padding: 8px; text-align: center; color: #888;">${item.valStart}${item.unit}</td>
-      <td style="padding: 8px; text-align: center; color: #fff;">${item.valEnd}${item.unit}</td>
-      <td style="padding: 8px; text-align: center; color: #00ffcc; font-weight: bold;">${item.valDiff > 0 ? '+' : ''}${item.valDiff}${item.unit}</td>
+      <td style="padding: 8px; text-align: center; color: #888;">${startDisplay}</td>
+      <td style="padding: 8px; text-align: center; color: #fff;">${endDisplay}</td>
+      <td style="padding: 8px; text-align: center; color: ${diffColor}; font-weight: bold;">${diffDisplay}</td>
     `;
     tableBody.appendChild(tr);
   });
 }
 
-function exportAnalyticsCSV() {
-  if (analyticsCalculatedData.length === 0) return showToast('データがありません。');
-  const startDate = document.getElementById('analytics-start-date').value;
-  const endDate = document.getElementById('analytics-end-date').value;
-  const metricText = document.getElementById('analytics-metric').options[document.getElementById('analytics-metric').selectedIndex].text;
-
-  let csvContent = `順位,曲名,Tier,開始日数値(${startDate}),終了日数値(${endDate}),期間内成果(${metricText})\n`;
-  analyticsCalculatedData.forEach((item, idx) => {
-    csvContent += `${idx + 1},"${item.title.replace(/"/g, '""')}",${item.tier},${item.valStart},${item.valEnd},${item.valDiff}\n`;
-  });
-
+function downloadCSV(csvContent, filename) {
   const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
   const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `analytics_${startDate}_to_${endDate}.csv`;
+  a.download = filename;
   a.click();
+}
+
+function exportAnalyticsCSV() {
+  if (analyticsCalculatedData.length === 0) return showToast('データがありません。');
+  const simpleMode = document.getElementById('analytics-simple-rank-mode').checked;
+  const endDate = document.getElementById('analytics-end-date').value;
+
+  if (simpleMode) {
+    let csvContent = `順位,曲名,Tier,再生数,維持率\n`;
+    analyticsCalculatedData.forEach(item => {
+      csvContent += `${item.rank},"${item.title.replace(/"/g, '""')}",${item.tier},${item.playCount},${item.retentionRate}\n`;
+    });
+    downloadCSV(csvContent, `ranking_${endDate}.csv`);
+    return;
+  }
+
+  const startDate = document.getElementById('analytics-start-date').value;
+  const metricText = document.getElementById('analytics-metric').options[document.getElementById('analytics-metric').selectedIndex].text;
+
+  let csvContent = `順位,曲名,Tier,開始日数値(${startDate}),終了日数値(${endDate}),期間内成果(${metricText})\n`;
+  analyticsCalculatedData.forEach((item, idx) => {
+    const startVal = item.isNew ? 'NEW' : item.valStart;
+    const diffVal = item.isNew ? 'NEW' : item.valDiff;
+    csvContent += `${idx + 1},"${item.title.replace(/"/g, '""')}",${item.tier},${startVal},${item.valEnd},${diffVal}\n`;
+  });
+
+  downloadCSV(csvContent, `analytics_${startDate}_to_${endDate}.csv`);
 }
 
 // --------------------------------------------------
@@ -709,11 +878,16 @@ function updatePlaylistByMode(forceReshuffle = false) {
     currentPlaylist = shuffledOrderIds.map(id => songs.find(s => s.id === id)).filter(Boolean);
   } else if (currentMode === 'playCount') {
     currentPlaylist = [...songs].sort((a, b) => b.playCount - a.playCount);
+  } else if (currentMode === 'watchTime') {
+    currentPlaylist = [...songs].sort((a, b) => b.totalWatchTime - a.totalWatchTime);
   } else if (currentMode === 'trending') {
+    // ★ 前々回火曜(trendStartSnapshot) → 前回火曜(trendEndSnapshot) の視聴回数増加分で並べる
     currentPlaylist = [...songs].sort((a, b) => {
-      const pastA = pastSnapshotData ? (pastSnapshotData[a.id]?.playCount || 0) : 0;
-      const pastB = pastSnapshotData ? (pastSnapshotData[b.id]?.playCount || 0) : 0;
-      return (b.playCount - pastB) - (a.playCount - pastA);
+      const startA = trendStartSnapshot ? (trendStartSnapshot[a.id]?.playCount || 0) : 0;
+      const endA = trendEndSnapshot ? (trendEndSnapshot[a.id]?.playCount ?? a.playCount) : a.playCount;
+      const startB = trendStartSnapshot ? (trendStartSnapshot[b.id]?.playCount || 0) : 0;
+      const endB = trendEndSnapshot ? (trendEndSnapshot[b.id]?.playCount ?? b.playCount) : b.playCount;
+      return (endB - startB) - (endA - startA);
     });
   } else {
     currentPlaylist = [...songs];
@@ -735,6 +909,7 @@ function setMode(mode, e) {
     relocateCurrentSong();
     renderRankingUI();
     updateTrackInfoDisplay();
+    updateTrendingInfoLabel();
   };
 
   if (mode === 'trending' || mode === 'analytics') {
@@ -1030,12 +1205,13 @@ function renderRankingUI() {
   const currentSong = currentPlaylist[currentIndex];
 
   let lastTier = null;
-  const targetList = (currentMode === 'playCount' || currentMode === 'trending') ? currentPlaylist : songs;
+  const isFlatRankedMode = (currentMode === 'playCount' || currentMode === 'trending' || currentMode === 'watchTime');
+  const targetList = isFlatRankedMode ? currentPlaylist : songs;
 
   targetList.forEach((song, index) => {
     if (searchTerm && !song.title.toLowerCase().includes(searchTerm)) return;
 
-    if (currentMode !== 'playCount' && currentMode !== 'trending' && song.tier !== lastTier) {
+    if (!isFlatRankedMode && song.tier !== lastTier) {
       const tierObj = TIER_DEFINITIONS.find(t => t.code === song.tier);
       const header = document.createElement('li');
       header.className = 'tier-header';
@@ -1062,9 +1238,12 @@ function renderRankingUI() {
     let metaStatsHtml = '';
     if (currentMode === 'playCount') {
       metaStatsHtml = `<span class="rank-playcount">👀 ${song.playCount}回</span>`;
+    } else if (currentMode === 'watchTime') {
+      metaStatsHtml = `<span class="rank-playcount">⏱ ${Math.round(song.totalWatchTime / 60)}分</span>`;
     } else if (currentMode === 'trending') {
-      const pastPlays = pastSnapshotData ? (pastSnapshotData[song.id]?.playCount || 0) : 0;
-      metaStatsHtml = `<span style="font-size: 15px; color: #ffaa00; font-weight: bold; margin-right: 8px;">🔥 +${song.playCount - pastPlays}回</span>`;
+      const startPlays = trendStartSnapshot ? (trendStartSnapshot[song.id]?.playCount || 0) : 0;
+      const endPlays = trendEndSnapshot ? (trendEndSnapshot[song.id]?.playCount ?? song.playCount) : song.playCount;
+      metaStatsHtml = `<span style="font-size: 15px; color: #ffaa00; font-weight: bold; margin-right: 8px;">🔥 +${endPlays - startPlays}回</span>`;
     }
 
     // ★ 全曲リストモードでは、隣の曲と直接順位を入れ替えられる▲▼ボタンを表示
