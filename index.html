@@ -93,6 +93,24 @@
     .rank-move-btn { background: #555; color: #fff; padding: 2px 7px; font-size: 12px; margin-right: 2px; }
     .rank-move-btn:hover { background: #777; }
     .rank-playcount { font-size: 16px; font-weight: bold; color: #00ffcc; margin-right: 10px; }
+    .rank-genre-tag {
+      background: #234040;
+      color: #7fffd4;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 12px;
+      margin-right: 8px;
+      display: inline-block;
+    }
+    .rank-thumb {
+      width: 48px;
+      height: 36px;
+      object-fit: cover;
+      border-radius: 3px;
+      margin-right: 10px;
+      flex-shrink: 0;
+      background: #000;
+    }
 
     #rank-search { width: 100%; box-sizing: border-box; margin-bottom: 10px; }
     .rank-list { max-height: 75vh; overflow-y: auto; padding-right: 4px; }
@@ -141,6 +159,7 @@
     <button class="mode-btn" onclick="setMode('playCount', event)">再生数順</button>
     <button class="mode-btn" onclick="setMode('watchTime', event)">🕒 再生時間順</button>
     <button class="mode-btn" onclick="setMode('trending', event)">トレンド順</button>
+    <button class="mode-btn" onclick="setMode('recommend', event)">🎯 おすすめ</button>
     <button class="mode-btn" onclick="setMode('analytics', event)">📊 アナリティクス</button>
     <div id="trending-info" style="display:none; font-size:12px; color:#888; margin-top:8px;"></div>
   </div>
@@ -157,14 +176,33 @@
           <button id="reshuffle-btn" onclick="reshuffleNow()" style="display:none;">🔀 シャッフルし直す</button>
         </div>
         <div style="margin-top: 10px; text-align: left; background: #2a2a2a; padding: 10px; border-radius: 4px;">
-          <div><strong>曲名:</strong> <span id="display-title">-</span></div>
-          <div>
-            再生数: <span id="display-plays">0</span>回 | 
-            総再生時間: <span id="display-total-time">0分</span> | 
-            維持率: <span id="display-retention">0%</span> | 
-            リリース: <span id="display-year">-</span>年
+          <div style="display: flex; gap: 10px; align-items: flex-start;">
+            <img id="display-thumb" src="" alt="" style="width: 120px; height: 90px; object-fit: cover; border-radius: 4px; background: #000; flex-shrink: 0;">
+            <div style="flex: 1; min-width: 0;">
+              <div>
+                <strong>曲名:</strong> <span id="display-title">-</span>
+                <button onclick="toggleEditSongForm()" style="font-size: 11px; padding: 3px 6px;">✎ 編集</button>
+              </div>
+              <div>ジャンル: <span id="display-genre" class="rank-genre-tag">-</span></div>
+              <div>
+                再生数: <span id="display-plays">0</span>回 | 
+                総再生時間: <span id="display-total-time">0分</span> | 
+                維持率: <span id="display-retention">0%</span> | 
+                リリース: <span id="display-year">-</span>年
+              </div>
+            </div>
           </div>
-          <div>
+
+          <div id="edit-song-form" style="display:none; margin-top: 8px; padding: 8px; background: #1a1a1a; border-radius: 4px;">
+            <div>曲名: <input type="text" id="edit-title-input" style="width: 60%;"></div>
+            <div style="margin-top: 4px;">ジャンル: <input type="text" id="edit-genre-input" placeholder="例: Electronic" style="width: 60%;"></div>
+            <div style="margin-top: 6px;">
+              <button onclick="saveSongEdit()">💾 保存</button>
+              <button onclick="toggleEditSongForm()">キャンセル</button>
+            </div>
+          </div>
+
+          <div style="margin-top: 8px;">
             Tier: <span id="display-tier">-</span>
             <select id="select-tier" onchange="changeCurrentSongTier(this.value)"></select>
           </div>
@@ -205,8 +243,13 @@
     <div style="margin-top: 6px;">
       <label>
         <input type="checkbox" id="analytics-simple-rank-mode" onchange="renderAnalyticsTable()">
-        単純ランキング表示（終了日時点の好き度ランキングをそのまま見る）
+        単純ランキング表示（終了日時点のランキングをそのまま見る）
       </label>
+      <select id="analytics-simple-rank-type" onchange="renderAnalyticsTable()" style="display:none;">
+        <option value="favorite">好き度ランキング</option>
+        <option value="playCount">歴代再生回数ランキング</option>
+        <option value="watchTime">総再生時間ランキング</option>
+      </select>
     </div>
     <div id="analytics-note" style="font-size: 12px; color: #888; margin-top: 6px;">
       ※ 好き度ランキングの変動は、開始日時点のデータが存在しない曲は「NEW」と表示し、順位変動の並び替え対象からは除外されます（同着はABC順）。
@@ -236,11 +279,19 @@
     <div id="overall-trend-chart-container" style="position: relative; margin-top: 10px; overflow-x: auto; background: #181818; border-radius: 6px; padding: 8px 0;"></div>
   </div>
 
+  <div id="recommend-container" class="card" style="display: none;">
+    <h2>🎯 おすすめ（好き度と視聴パターンのズレ）</h2>
+    <p style="font-size: 12px; color: #888;">
+      「好き度ランキング（全曲リストの並び順）」と「実際の再生数ランキング」のズレが大きい曲を検出します。クリックでその曲を再生できます。
+    </p>
+    <div id="recommend-list-body"></div>
+  </div>
 
   <div class="card">
     <h3>➕ 新規曲追加</h3>
     <input type="text" id="input-title" placeholder="曲名">
     <input type="text" id="input-ytid" placeholder="YouTube ID または URL">
+    <input type="text" id="input-genre" placeholder="ジャンル (空欄可)">
     <input type="number" id="input-year" placeholder="リリース年 (例: 2024)" value="2024">
     <select id="input-tier"></select>
     <button onclick="addNewSong()">追加</button>
@@ -357,6 +408,9 @@ let trendEndDateUsed = null;
 // ★ シャッフル順のキャッシュ（毎回シャッフルし直さないようにする）
 let shuffledOrderIds = null;
 
+// ★ TOP20モードのランダム再生順キャッシュ
+let top20OrderIds = null;
+
 function initTierSelects() {
   const selectTier = document.getElementById('select-tier');
   const inputTier = document.getElementById('input-tier');
@@ -411,6 +465,7 @@ songsRef.on('value', (snapshot) => {
         duration: duration,
         totalWatchTime: totalWatchTime,
         tier: s.tier || scoreToTierCode(s.score || 80),
+        genre: s.genre || 'ジャンル不明',
         order: s.order !== undefined ? s.order : idx
       };
     });
@@ -512,6 +567,7 @@ function saveDailySnapshot(dateStr) {
       duration: song.duration,
       retentionRate: Math.round(getRetentionRate(song)),
       tier: song.tier,
+      genre: song.genre || 'ジャンル不明',
       order: song.order,
       rank: idx + 1
     };
@@ -668,34 +724,50 @@ function getSongRankAtDate(dateStr, song) {
 }
 
 // ★ 指定日時点の好き度ランキングを丸ごと取得する（単純ランキング表示モード用）
-function getSongsRankingAtDate(dateStr) {
+function getSongsRankingAtDate(dateStr, rankType = 'favorite') {
   const todayStr = new Date().toISOString().split('T')[0];
+  let list;
 
   if (dateStr === todayStr) {
-    return [...songs].sort((a, b) => a.order - b.order).map((s, idx) => ({
+    list = songs.map(s => ({
       id: s.id,
       title: s.title,
       tier: s.tier,
-      rank: idx + 1,
+      genre: s.genre || 'ジャンル不明',
+      favoriteOrder: s.order,
       playCount: s.playCount || 0,
+      totalWatchTime: s.totalWatchTime || 0,
       retentionRate: Math.round(getRetentionRate(s))
     }));
+  } else {
+    const snapSongs = allHistoryData[dateStr]?.songs;
+    if (!snapSongs) return [];
+
+    list = Object.keys(snapSongs).map(id => {
+      const snap = snapSongs[id];
+      return {
+        id,
+        title: snap.title,
+        tier: snap.tier,
+        genre: snap.genre || 'ジャンル不明',
+        favoriteOrder: (snap.rank || 9999) - 1,
+        playCount: snap.playCount || 0,
+        totalWatchTime: snap.totalWatchTime || 0,
+        retentionRate: snap.retentionRate || 0
+      };
+    });
   }
 
-  const snapSongs = allHistoryData[dateStr]?.songs;
-  if (!snapSongs) return [];
+  // ★ 好き度ランキング／歴代再生回数ランキング／総再生時間ランキングを切り替え
+  if (rankType === 'playCount') {
+    list.sort((a, b) => b.playCount - a.playCount);
+  } else if (rankType === 'watchTime') {
+    list.sort((a, b) => b.totalWatchTime - a.totalWatchTime);
+  } else {
+    list.sort((a, b) => a.favoriteOrder - b.favoriteOrder);
+  }
 
-  return Object.keys(snapSongs).map(id => {
-    const snap = snapSongs[id];
-    return {
-      id,
-      title: snap.title,
-      tier: snap.tier,
-      rank: snap.rank || 9999,
-      playCount: snap.playCount || 0,
-      retentionRate: snap.retentionRate || 0
-    };
-  }).sort((a, b) => a.rank - b.rank);
+  return list.map((item, idx) => ({ ...item, rank: idx + 1 }));
 }
 
 // --------------------------------------------------
@@ -842,12 +914,16 @@ function renderAnalyticsTable() {
 
   if (!startDate || !endDate) return;
 
-  // --- 単純ランキング表示モード：終了日時点の好き度ランキングをそのまま見る ---
+  // --- 単純ランキング表示モード：終了日時点のランキング（好き度／歴代再生回数／総再生時間）をそのまま見る ---
+  const rankTypeSelect = document.getElementById('analytics-simple-rank-type');
+  if (rankTypeSelect) rankTypeSelect.style.display = simpleMode ? 'inline-block' : 'none';
+
   if (simpleMode) {
     if (noteEl) noteEl.style.display = 'none';
-    theadRow.innerHTML = `<th>順位</th><th>曲名</th><th>Tier</th><th>再生数</th><th>維持率</th>`;
+    const rankType = rankTypeSelect ? rankTypeSelect.value : 'favorite';
+    theadRow.innerHTML = `<th>順位</th><th>曲名</th><th>Tier</th><th>ジャンル</th><th>再生回数</th><th>総再生時間</th><th>維持率</th>`;
 
-    const ranking = getSongsRankingAtDate(endDate);
+    const ranking = getSongsRankingAtDate(endDate, rankType);
     analyticsCalculatedData = ranking;
 
     tableBody.innerHTML = '';
@@ -858,7 +934,9 @@ function renderAnalyticsTable() {
         <td style="padding: 8px; text-align: center; color: #ffaa00; font-weight: bold;">${item.rank}</td>
         <td style="padding: 8px; font-weight: bold;">${item.title}</td>
         <td style="padding: 8px; text-align: center;">${item.tier}</td>
+        <td style="padding: 8px; text-align: center; color: #7fffd4;">${item.genre}</td>
         <td style="padding: 8px; text-align: center; color: #888;">${item.playCount}回</td>
+        <td style="padding: 8px; text-align: center; color: #888;">${Math.round(item.totalWatchTime / 60)}分</td>
         <td style="padding: 8px; text-align: center; color: #888;">${item.retentionRate}%</td>
       `;
       tableBody.appendChild(tr);
@@ -964,9 +1042,9 @@ function exportAnalyticsCSV() {
   const endDate = document.getElementById('analytics-end-date').value;
 
   if (simpleMode) {
-    let csvContent = `順位,曲名,Tier,再生数,維持率\n`;
+    let csvContent = `順位,曲名,Tier,ジャンル,再生回数,総再生時間(分),維持率\n`;
     analyticsCalculatedData.forEach(item => {
-      csvContent += `${item.rank},"${item.title.replace(/"/g, '""')}",${item.tier},${item.playCount},${item.retentionRate}\n`;
+      csvContent += `${item.rank},"${item.title.replace(/"/g, '""')}",${item.tier},${item.genre},${item.playCount},${Math.round(item.totalWatchTime / 60)},${item.retentionRate}\n`;
     });
     downloadCSV(csvContent, `ranking_${endDate}.csv`);
     return;
@@ -990,24 +1068,41 @@ function exportAnalyticsCSV() {
 // --------------------------------------------------
 function updatePlaylistByMode(forceReshuffle = false) {
   const analyticsContainer = document.getElementById('analytics-container');
+  const recommendContainer = document.getElementById('recommend-container');
   const rankList = document.getElementById('rank-list');
   const searchBox = document.getElementById('rank-search');
 
+  // --- 専用ビュー（アナリティクス／おすすめ）の表示切り替え ---
+  const isSpecialView = (currentMode === 'analytics' || currentMode === 'recommend');
+  if (analyticsContainer) analyticsContainer.style.display = (currentMode === 'analytics') ? 'block' : 'none';
+  if (recommendContainer) recommendContainer.style.display = (currentMode === 'recommend') ? 'block' : 'none';
+  if (rankList) rankList.style.display = isSpecialView ? 'none' : 'block';
+  if (searchBox) searchBox.style.display = isSpecialView ? 'none' : 'block';
+
   if (currentMode === 'analytics') {
-    if (analyticsContainer) analyticsContainer.style.display = 'block';
-    if (rankList) rankList.style.display = 'none';
-    if (searchBox) searchBox.style.display = 'none';
     renderAnalyticsTable();
     renderOverallTrendChart();
     return;
-  } else {
-    if (analyticsContainer) analyticsContainer.style.display = 'none';
-    if (rankList) rankList.style.display = 'block';
-    if (searchBox) searchBox.style.display = 'block';
+  }
+
+  if (currentMode === 'recommend') {
+    computeAndRenderRecommendations();
+    return;
   }
 
   if (currentMode === 'top20') {
-    currentPlaylist = songs.slice(0, 20);
+    // ★ TOP20はランダム再生。シャッフル順をキャッシュし、明示的な要求（forceReshuffle）
+    //   がない限り毎回の再同期でシャッフルし直さないようにする。
+    const top20Songs = songs.slice(0, 20);
+    const top20Ids = new Set(top20Songs.map(s => s.id));
+
+    if (!top20OrderIds || forceReshuffle) {
+      top20OrderIds = top20Songs.map(s => s.id).sort(() => Math.random() - 0.5);
+    } else {
+      top20OrderIds = top20OrderIds.filter(id => top20Ids.has(id));
+      top20Songs.forEach(s => { if (!top20OrderIds.includes(s.id)) top20OrderIds.push(s.id); });
+    }
+    currentPlaylist = top20OrderIds.map(id => songs.find(s => s.id === id)).filter(Boolean);
   } else if (currentMode === 'bottom') {
     // ★ シャッフル順をキャッシュし、明示的な要求（forceReshuffle）がない限り
     //   毎回の再同期でシャッフルし直さないようにする。曲の増減にはIDベースで追従。
@@ -1039,18 +1134,88 @@ function updatePlaylistByMode(forceReshuffle = false) {
   }
 }
 
+// --------------------------------------------------
+// 🎯 おすすめ機能（好き度ランキング と 実際の再生数ランキング のズレ検出）
+// --------------------------------------------------
+function computeAndRenderRecommendations() {
+  const container = document.getElementById('recommend-list-body');
+  if (!container) return;
+
+  if (songs.length < 3) {
+    currentPlaylist = [...songs];
+    container.innerHTML = '<div style="color:#888;padding:15px;">曲数がまだ少ないため、おすすめを計算できません。</div>';
+    return;
+  }
+
+  const favoriteRanked = [...songs].sort((a, b) => a.order - b.order);
+  const engagementRanked = [...songs].sort((a, b) => b.playCount - a.playCount);
+
+  const favoriteRankMap = {};
+  favoriteRanked.forEach((s, idx) => { favoriteRankMap[s.id] = idx + 1; });
+  const engagementRankMap = {};
+  engagementRanked.forEach((s, idx) => { engagementRankMap[s.id] = idx + 1; });
+
+  const items = songs.map(s => {
+    const favRank = favoriteRankMap[s.id];
+    const engRank = engagementRankMap[s.id];
+    return {
+      id: s.id, title: s.title, tier: s.tier, genre: s.genre || 'ジャンル不明',
+      youtubeId: s.youtubeId, favRank, engRank, gap: favRank - engRank
+    };
+  });
+
+  // gap > 0 : 好き度ランキングは低い(数字が大きい)のに、実際はよく再生されている＝隠れたお気に入り
+  const hiddenGems = items.filter(i => i.gap > 0).sort((a, b) => b.gap - a.gap).slice(0, 8);
+  // gap < 0 : 好き度ランキングは高い(数字が小さい)のに、実際はあまり再生されていない
+  const overrated = items.filter(i => i.gap < 0).sort((a, b) => a.gap - b.gap).slice(0, 8);
+
+  const renderGroup = (list, isPositive) => list.map(i => `
+    <li class="rank-item" onclick="selectSongById('${i.id}')">
+      <img src="https://i.ytimg.com/vi/${i.youtubeId}/default.jpg" class="rank-thumb" loading="lazy" alt="">
+      <span class="rank-tier-tag">${i.tier}</span>
+      <span class="rank-genre-tag">${i.genre}</span>
+      <span class="rank-name">${i.title}</span>
+      <span style="font-size:12px; color:${isPositive ? '#00ffcc' : '#ff8888'}; margin-right:8px; white-space:nowrap;">
+        好き度${i.favRank}位 / 再生数${i.engRank}位 (${i.gap > 0 ? '+' : ''}${i.gap})
+      </span>
+    </li>
+  `).join('');
+
+  container.innerHTML = `
+    <h3>🔺 意外と聴いている曲（過小評価かも）</h3>
+    <ul class="rank-list" style="max-height:none;">${hiddenGems.length ? renderGroup(hiddenGems, true) : '<li style="padding:10px;color:#888;background:transparent;cursor:default;">該当なし</li>'}</ul>
+    <h3 style="margin-top:20px;">🔻 好きな割に聴いていない曲</h3>
+    <ul class="rank-list" style="max-height:none;">${overrated.length ? renderGroup(overrated, false) : '<li style="padding:10px;color:#888;background:transparent;cursor:default;">該当なし</li>'}</ul>
+  `;
+
+  currentPlaylist = [...hiddenGems, ...overrated].map(i => songs.find(s => s.id === i.id)).filter(Boolean);
+  if (currentPlaylist.length === 0) currentPlaylist = [...songs];
+}
+
+function selectSongById(id) {
+  if (isTransitioning) return;
+  const idx = currentPlaylist.findIndex(s => s.id === id);
+  if (idx === -1) return;
+  isTransitioning = true;
+  setNavButtonsDisabled(true);
+  isManualSelection = true;
+  currentIndex = idx;
+  loadCurrentSong(true);
+  setTimeout(() => { isTransitioning = false; setNavButtonsDisabled(false); }, 400);
+}
+
 function setMode(mode, e) {
   document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
   e.target.classList.add('active');
   currentMode = mode;
 
   const reshuffleBtn = document.getElementById('reshuffle-btn');
-  if (reshuffleBtn) reshuffleBtn.style.display = (mode === 'bottom') ? 'inline-block' : 'none';
+  if (reshuffleBtn) reshuffleBtn.style.display = (mode === 'bottom' || mode === 'top20') ? 'inline-block' : 'none';
 
   // ★ タブ（モード）切替では曲を変えない。ランキングの並びだけを差し替え、
   //   再生中の曲は継続する。今流れている曲の位置は currentSongId から探し直す。
   const proceed = () => {
-    updatePlaylistByMode(mode === 'bottom');
+    updatePlaylistByMode(mode === 'bottom' || mode === 'top20');
     relocateCurrentSong();
     renderRankingUI();
     updateTrackInfoDisplay();
@@ -1065,7 +1230,7 @@ function setMode(mode, e) {
 }
 
 function reshuffleNow() {
-  if (currentMode !== 'bottom' || isTransitioning) return;
+  if ((currentMode !== 'bottom' && currentMode !== 'top20') || isTransitioning) return;
   updatePlaylistByMode(true);
   relocateCurrentSong();
   renderRankingUI();
@@ -1202,6 +1367,8 @@ function updateTrackInfoDisplay() {
   const song = currentPlaylist[currentIndex];
   if (song) {
     document.getElementById('display-title').innerText = song.title;
+    document.getElementById('display-genre').innerText = song.genre || 'ジャンル不明';
+    document.getElementById('display-thumb').src = `https://i.ytimg.com/vi/${song.youtubeId}/mqdefault.jpg`;
     document.getElementById('display-plays').innerText = song.playCount;
     document.getElementById('display-total-time').innerText = `${Math.round(song.totalWatchTime / 60)}分`;
     document.getElementById('display-retention').innerText = `${Math.round(getRetentionRate(song))}%`;
@@ -1211,7 +1378,51 @@ function updateTrackInfoDisplay() {
     document.getElementById('display-tier').innerText = `${song.tier} (${tierObj.name})`;
     document.getElementById('select-tier').value = song.tier;
     document.getElementById('input-direct-rank').placeholder = `${song.order + 1}位`;
+
+    // 編集フォームが開いている場合は選択中の曲に合わせて内容も更新
+    const editForm = document.getElementById('edit-song-form');
+    if (editForm && editForm.style.display !== 'none') {
+      document.getElementById('edit-title-input').value = song.title;
+      document.getElementById('edit-genre-input').value = (song.genre && song.genre !== 'ジャンル不明') ? song.genre : '';
+    }
   }
+}
+
+// --------------------------------------------------
+// ✎ 曲名・ジャンルの編集
+// --------------------------------------------------
+function toggleEditSongForm() {
+  const form = document.getElementById('edit-song-form');
+  if (!form) return;
+  const song = currentPlaylist[currentIndex];
+
+  if (form.style.display === 'none' || !form.style.display) {
+    if (!song) return;
+    document.getElementById('edit-title-input').value = song.title;
+    document.getElementById('edit-genre-input').value = (song.genre && song.genre !== 'ジャンル不明') ? song.genre : '';
+    form.style.display = 'block';
+  } else {
+    form.style.display = 'none';
+  }
+}
+
+function saveSongEdit() {
+  const song = currentPlaylist[currentIndex];
+  if (!song) return;
+
+  const newTitle = document.getElementById('edit-title-input').value.trim();
+  const newGenre = document.getElementById('edit-genre-input').value.trim();
+
+  if (!newTitle) return showToast('曲名を入力してください');
+
+  song.title = newTitle;
+  song.genre = newGenre || 'ジャンル不明';
+
+  db.ref(`music_chart/songs/${song.id}`).update({ title: song.title, genre: song.genre });
+
+  document.getElementById('edit-song-form').style.display = 'none';
+  updateTrackInfoDisplay();
+  showToast('保存しました');
 }
 
 // --------------------------------------------------
@@ -1341,7 +1552,7 @@ function startSeekBarUpdater() {
 // ランキング表示
 // --------------------------------------------------
 function renderRankingUI() {
-  if (currentMode === 'analytics') return;
+  if (currentMode === 'analytics' || currentMode === 'recommend') return;
 
   const listEl = document.getElementById('rank-list');
   const searchInput = document.getElementById('rank-search');
@@ -1351,7 +1562,8 @@ function renderRankingUI() {
 
   let lastTier = null;
   const isFlatRankedMode = (currentMode === 'playCount' || currentMode === 'trending' || currentMode === 'watchTime');
-  const targetList = isFlatRankedMode ? currentPlaylist : songs;
+  // ★ TOP20モードは表示するランキングもTOP20のみに制限する（並びは元の好き度順、再生自体はランダム）
+  const targetList = isFlatRankedMode ? currentPlaylist : (currentMode === 'top20' ? songs.slice(0, 20) : songs);
 
   targetList.forEach((song, index) => {
     if (searchTerm && !song.title.toLowerCase().includes(searchTerm)) return;
@@ -1403,7 +1615,9 @@ function renderRankingUI() {
     li.innerHTML = `
       <span class="rank-num">${index + 1}位</span>
       ${moveButtonsHtml}
+      <img src="https://i.ytimg.com/vi/${song.youtubeId}/default.jpg" class="rank-thumb" loading="lazy" alt="">
       <span class="rank-tier-tag">${song.tier}</span>
+      <span class="rank-genre-tag">${song.genre || 'ジャンル不明'}</span>
       <span class="rank-name">${song.title}</span>
       ${metaStatsHtml}
       <button class="rank-del-btn" onclick="deleteSong('${song.id}', event)">✕</button>
@@ -1521,6 +1735,7 @@ document.addEventListener('keydown', (e) => {
 function addNewSong() {
   const titleInput = document.getElementById('input-title');
   let ytidInput = document.getElementById('input-ytid').value.trim();
+  const genreInput = document.getElementById('input-genre');
   const yearInput = document.getElementById('input-year');
   const tierInput = document.getElementById('input-tier');
 
@@ -1534,6 +1749,7 @@ function addNewSong() {
     id: newId,
     youtubeId: ytidInput,
     title: titleInput.value.trim(),
+    genre: (genreInput && genreInput.value.trim()) || 'ジャンル不明',
     year: parseInt(yearInput.value) || 2024,
     tier: tierInput.value,
     playCount: 0,
@@ -1545,6 +1761,7 @@ function addNewSong() {
   db.ref(`music_chart/songs/${newId}`).set(newSong);
   titleInput.value = '';
   document.getElementById('input-ytid').value = '';
+  if (genreInput) genreInput.value = '';
   showToast('曲を追加しました');
 }
 
