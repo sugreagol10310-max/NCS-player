@@ -1155,21 +1155,34 @@ function computeAndRenderRecommendations() {
   const date3DaysAgoUsed = findClosestPastSnapshotDate(target3DaysAgoStr, availableDates);
   const snapshot3DaysAgo = date3DaysAgoUsed ? (allHistoryData[date3DaysAgoUsed]?.songs || null) : null;
 
+  // 3日前（基準日）のスナップショットに存在していた曲のみに対象を絞り込む
+  let eligibleSongs = songs;
+  if (snapshot3DaysAgo) {
+    eligibleSongs = songs.filter(s => snapshot3DaysAgo[s.id] !== undefined);
+  }
+
+  if (eligibleSongs.length < 3) {
+    currentPlaylist = [...songs];
+    container.innerHTML = '<div style="color:#888;padding:15px;">3日前から存在する曲が少なすぎるため（3曲未満）、おすすめを計算できません。</div>';
+    return;
+  }
+
   // 各曲の直近3日間の再生回数を算出
   const get3DaysPlayCount = (s) => {
     const startPlays = snapshot3DaysAgo && snapshot3DaysAgo[s.id] ? (snapshot3DaysAgo[s.id].playCount || 0) : 0;
     return Math.max(0, (s.playCount || 0) - startPlays);
   };
 
-  const favoriteRanked = [...songs].sort((a, b) => a.order - b.order);
-  const engagementRanked = [...songs].sort((a, b) => get3DaysPlayCount(b) - get3DaysPlayCount(a));
+  // 3日前から存在する曲のみで順位を再計算
+  const favoriteRanked = [...eligibleSongs].sort((a, b) => a.order - b.order);
+  const engagementRanked = [...eligibleSongs].sort((a, b) => get3DaysPlayCount(b) - get3DaysPlayCount(a));
 
   const favoriteRankMap = {};
   favoriteRanked.forEach((s, idx) => { favoriteRankMap[s.id] = idx + 1; });
   const engagementRankMap = {};
   engagementRanked.forEach((s, idx) => { engagementRankMap[s.id] = idx + 1; });
 
-  const items = songs.map(s => {
+  const items = eligibleSongs.map(s => {
     const favRank = favoriteRankMap[s.id];
     const engRank = engagementRankMap[s.id];
     const recentPlays = get3DaysPlayCount(s);
@@ -1196,7 +1209,7 @@ function computeAndRenderRecommendations() {
     </li>
   `).join('');
 
-  const dateLabelText = date3DaysAgoUsed ? `📅 基準日: ${date3DaysAgoUsed} 以降のデータと比較中` : '※過去データ蓄積前のため累計再生数で暫定計算しています';
+  const dateLabelText = date3DaysAgoUsed ? `📅 基準日: ${date3DaysAgoUsed} 以降のデータと比較中（3日前に未登録の曲は除外）` : '※過去データ蓄積前のため累計再生数で暫定計算しています';
 
   container.innerHTML = `
     <div style="font-size:12px; color:#ffaa00; margin-bottom:10px;">${dateLabelText}</div>
