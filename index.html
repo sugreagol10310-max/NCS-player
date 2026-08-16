@@ -155,6 +155,7 @@
   <div class="card">
     <button class="mode-btn active" onclick="setMode('all', event)">全曲リスト</button>
     <button class="mode-btn" onclick="setMode('top20', event)">Top 20</button>
+    <button class="mode-btn" onclick="setMode('genreTop', event)">🎸 ジャンルTOP</button>
     <button class="mode-btn" onclick="setMode('bottom', event)">シャッフル再生</button>
     <button class="mode-btn" onclick="setMode('playCount', event)">再生数順</button>
     <button class="mode-btn" onclick="setMode('watchTime', event)">🕒 再生時間順</button>
@@ -285,6 +286,27 @@
       「好き度ランキング（全曲リストの並び順）」と「実際の再生数ランキング」のズレが大きい曲を検出します。クリックでその曲を再生できます。
     </p>
     <div id="recommend-list-body"></div>
+  </div>
+
+  <!-- 🎸 ジャンルTOP コンテナ（新規追加） -->
+  <div id="genre-top-container" class="card" style="display: none; padding-bottom: 10px;">
+    <h2 style="margin-top: 0;">🎸 ジャンルTOP</h2>
+    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+      <div>
+        <label for="genre-select" style="font-size:12px; color:#aaa;">ジャンル</label><br>
+        <select id="genre-select" style="padding: 5px; background: #222; color: #fff; border: 1px solid #444; border-radius: 4px;" onchange="updateGenreTopList()">
+          <!-- JavaScriptで動的に生成 -->
+        </select>
+      </div>
+      <div>
+        <label for="genre-sort-select" style="font-size:12px; color:#aaa;">並び順</label><br>
+        <select id="genre-sort-select" style="padding: 5px; background: #222; color: #fff; border: 1px solid #444; border-radius: 4px;" onchange="updateGenreTopList()">
+          <option value="favorite">好き度順</option>
+          <option value="playCount">再生回数順</option>
+          <option value="watchTime">再生時間順</option>
+        </select>
+      </div>
+    </div>
   </div>
 
   <div class="card">
@@ -1231,17 +1253,44 @@ function computeAndRenderRecommendations() {
   if (currentPlaylist.length === 0) currentPlaylist = [...songs];
 }
 
-// モード切替関数（fetchPastHistory の呼び出し対象に recommend を追加）
+// モード切替関数
 function setMode(mode, e) {
   document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
   e.target.classList.add('active');
   currentMode = mode;
 
+  // 手動並べ替え（シャッフル）ボタンの表示制御
   const reshuffleBtn = document.getElementById('reshuffle-btn');
-  if (reshuffleBtn) reshuffleBtn.style.display = (mode === 'bottom' || mode === 'top20') ? 'inline-block' : 'none';
+  if (reshuffleBtn) reshuffleBtn.style.display = (mode === 'bottom' || mode === 'top20' || mode === 'all') ? 'inline-block' : 'none';
+
+  // 各種専用コンテナの表示切替
+  const dateRangeContainer = document.getElementById('date-range-container');
+  const analyticsContainer = document.getElementById('analytics-container');
+  const recommendContainer = document.getElementById('recommend-container');
+  const genreTopContainer  = document.getElementById('genre-top-container'); // ★ 追加
+
+  if (dateRangeContainer) dateRangeContainer.style.display = (mode === 'trending') ? 'block' : 'none';
+  if (analyticsContainer) analyticsContainer.style.display = (mode === 'analytics') ? 'block' : 'none';
+  if (recommendContainer) recommendContainer.style.display = (mode === 'recommend') ? 'block' : 'none';
+  if (genreTopContainer)  genreTopContainer.style.display  = (mode === 'genreTop')  ? 'block' : 'none'; // ★ 追加
+
+  // リスト本体の表示切替（おすすめ・分析モード時は非表示）
+  const listEl = document.getElementById('rank-list');
+  if (listEl) {
+    listEl.style.display = (mode === 'analytics' || mode === 'recommend') ? 'none' : 'block';
+  }
 
   const proceed = () => {
-    updatePlaylistByMode(mode === 'bottom' || mode === 'top20');
+    if (mode === 'genreTop') {
+      populateGenreSelect(); // ジャンルプルダウンを生成
+      updateGenreTopList();  // リストを更新
+    } else {
+      updatePlaylistByMode(mode === 'bottom' || mode === 'top20');
+    }
+    
+    if (mode === 'analytics') renderAnalytics();
+    if (mode === 'recommend') computeAndRenderRecommendations();
+
     relocateCurrentSong();
     renderRankingUI();
     updateTrackInfoDisplay();
@@ -1265,39 +1314,6 @@ function selectSongById(id) {
   currentIndex = idx;
   loadCurrentSong(true);
   setTimeout(() => { isTransitioning = false; setNavButtonsDisabled(false); }, 400);
-}
-
-function setMode(mode, e) {
-  document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
-  e.target.classList.add('active');
-  currentMode = mode;
-
-  const reshuffleBtn = document.getElementById('reshuffle-btn');
-  if (reshuffleBtn) reshuffleBtn.style.display = (mode === 'bottom' || mode === 'top20') ? 'inline-block' : 'none';
-
-  // ★ タブ（モード）切替では曲を変えない。ランキングの並びだけを差し替え、
-  //   再生中の曲は継続する。今流れている曲の位置は currentSongId から探し直す。
-  const proceed = () => {
-    updatePlaylistByMode(mode === 'bottom' || mode === 'top20');
-    relocateCurrentSong();
-    renderRankingUI();
-    updateTrackInfoDisplay();
-    updateTrendingInfoLabel();
-  };
-
-  if (mode === 'trending' || mode === 'analytics') {
-    fetchPastHistory(proceed);
-  } else {
-    proceed();
-  }
-}
-
-function reshuffleNow() {
-  if ((currentMode !== 'bottom' && currentMode !== 'top20') || isTransitioning) return;
-  updatePlaylistByMode(true);
-  relocateCurrentSong();
-  renderRankingUI();
-  updateTrackInfoDisplay();
 }
 
 // --------------------------------------------------
@@ -1621,19 +1637,32 @@ function renderRankingUI() {
   const listEl = document.getElementById('rank-list');
   if (!listEl) return;
 
-  const searchInput = document.getElementById('rank-search');
-  const searchTerm = searchInput ? searchInput.value.trim().toLowerCase() : '';
-  listEl.innerHTML = '';
-  const currentSong = currentPlaylist[currentIndex];
+  // ... (省略) ...
 
   let lastTier = null;
+  // ★ currentMode === 'genreTop' を isFlatRankedMode の判定から除外し、個別で判定
   const isFlatRankedMode = (currentMode === 'playCount' || currentMode === 'trending' || currentMode === 'watchTime');
-  const targetList = isFlatRankedMode ? currentPlaylist : (currentMode === 'top20' ? songs.slice(0, 20) : songs);
+  
+  // ★ ジャンルTOPモードの判定
+  const isGenreTopMode = (currentMode === 'genreTop');
+  const genreSortType = isGenreTopMode ? document.getElementById('genre-sort-select')?.value : null;
+
+  // ターゲットリストの決定
+  let targetList = currentPlaylist;
+  if (currentMode === 'top20') {
+    targetList = songs.slice(0, 20);
+  } else if (currentMode === 'all') {
+    targetList = songs; // allの場合は元の順序のsongsを表示
+  }
 
   targetList.forEach((song, index) => {
     if (searchTerm && !song.title.toLowerCase().includes(searchTerm)) return;
 
-    if (!isFlatRankedMode && song.tier !== lastTier) {
+    // ★ Tierヘッダーの表示条件を調整：
+    // isFlatRankedMode ではなく、かつ (genreTopモードではない OR genreTopモードで「好き度順」のとき) のみ表示
+    const showTierHeader = !isFlatRankedMode && (!isGenreTopMode || genreSortType === 'favorite');
+
+    if (showTierHeader && song.tier !== lastTier) {
       const tierObj = TIER_DEFINITIONS.find(t => t.code === song.tier);
       const header = document.createElement('li');
       header.className = 'tier-header';
@@ -2013,6 +2042,56 @@ function getGenreStyle(genre) {
     bg: bgColor,
     text: getContrastColor(bgColor)
   };
+}
+
+// --------------------------------------------------
+// 🎸 ジャンルTOP機能
+// --------------------------------------------------
+// ジャンル選択プルダウンの選択肢を生成
+function populateGenreSelect() {
+  const select = document.getElementById('genre-select');
+  if (!select) return;
+
+  // 既存の選択値を保持（あれば）
+  const currentVal = select.value;
+
+  // 曲データから一意のジャンルを抽出し、アルファベット順にソート（ジャンル不明は除外）
+  const uniqueGenres = [...new Set(songs.map(s => s.genre).filter(g => g && g !== 'ジャンル不明'))].sort();
+  
+  select.innerHTML = uniqueGenres.map(g => `<option value="${g}">${g}</option>`).join('');
+
+  // 以前の選択値が存在していれば復元、なければ最初の要素
+  if (currentVal && uniqueGenres.includes(currentVal)) {
+    select.value = currentVal;
+  } else if (uniqueGenres.length > 0) {
+    select.value = uniqueGenres[0];
+  }
+}
+
+// 選択されたジャンルとソート順に基づいて currentPlaylist を更新
+function updateGenreTopList() {
+  if (currentMode !== 'genreTop') return;
+
+  const genre = document.getElementById('genre-select')?.value;
+  const sortType = document.getElementById('genre-sort-select')?.value || 'favorite';
+
+  if (!genre) return;
+
+  // 指定ジャンルの曲のみを抽出
+  let filtered = songs.filter(s => s.genre === genre);
+
+  // 指定された並び順でソート
+  if (sortType === 'favorite') {
+    filtered.sort((a, b) => a.order - b.order); // 好き度（元の並び順）
+  } else if (sortType === 'playCount') {
+    filtered.sort((a, b) => (b.playCount || 0) - (a.playCount || 0)); // 再生回数
+  } else if (sortType === 'watchTime') {
+    filtered.sort((a, b) => (b.totalWatchTime || 0) - (a.totalWatchTime || 0)); // 再生時間
+  }
+
+  currentPlaylist = filtered;
+  renderRankingUI();
+  relocateCurrentSong();
 }
 </script>
 </body>
