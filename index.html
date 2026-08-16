@@ -1613,12 +1613,15 @@ function startSeekBarUpdater() {
 }
 
 // --------------------------------------------------
-// ランキング表示
+// --------------------------------------------------
+// ランキング表示（ジャンルカラー対応版）
 // --------------------------------------------------
 function renderRankingUI() {
   if (currentMode === 'analytics' || currentMode === 'recommend') return;
 
-  const listEl = document.getElementById('rank-list');
+  const listEl = document.getElementById('rank-list'); // IDを正しく指定
+  if (!listEl) return;
+
   const searchInput = document.getElementById('rank-search');
   const searchTerm = searchInput ? searchInput.value.trim().toLowerCase() : '';
   listEl.innerHTML = '';
@@ -1626,7 +1629,6 @@ function renderRankingUI() {
 
   let lastTier = null;
   const isFlatRankedMode = (currentMode === 'playCount' || currentMode === 'trending' || currentMode === 'watchTime');
-  // ★ TOP20モードは表示するランキングもTOP20のみに制限する（並びは元の好き度順、再生自体はランダム）
   const targetList = isFlatRankedMode ? currentPlaylist : (currentMode === 'top20' ? songs.slice(0, 20) : songs);
 
   targetList.forEach((song, index) => {
@@ -1644,6 +1646,11 @@ function renderRankingUI() {
     const li = document.createElement('li');
     li.className = 'rank-item';
     if (currentSong && song.id === currentSong.id) li.classList.add('active');
+
+    // ★ ジャンルカラーを各行の背景色・文字色にセット
+    const gStyle = getGenreStyle(song.genre);
+    li.style.backgroundColor = gStyle.bg;
+    li.style.color = gStyle.text;
 
     li.onclick = (e) => {
       e.stopPropagation();
@@ -1667,7 +1674,6 @@ function renderRankingUI() {
       metaStatsHtml = `<span style="font-size: 15px; color: #ffaa00; font-weight: bold; margin-right: 8px;">🔥 +${endPlays - startPlays}回</span>`;
     }
 
-    // ★ 全曲リストモードでは、隣の曲と直接順位を入れ替えられる▲▼ボタンを表示
     let moveButtonsHtml = '';
     if (currentMode === 'all') {
       moveButtonsHtml = `
@@ -1682,7 +1688,7 @@ function renderRankingUI() {
       <img src="https://i.ytimg.com/vi/${song.youtubeId}/default.jpg" class="rank-thumb" loading="lazy" alt="">
       <span class="rank-tier-tag">${song.tier}</span>
       <span class="rank-genre-tag">${song.genre || 'ジャンル不明'}</span>
-      <span class="rank-name">${song.title}</span>
+      <span class="rank-name" style="color: ${gStyle.text};">${song.title}</span>
       ${metaStatsHtml}
       <button class="rank-del-btn" onclick="deleteSong('${song.id}', event)">✕</button>
     `;
@@ -1980,6 +1986,20 @@ const renderGroup = (list, isPositive) => list.map(i => {
 
 // 現在再生中の曲のジャンルに応じてコンテナ（カード）の色を適用
 function applyGenreColorTheme() {
+}
+
+// --------------------------------------------------
+// 🎨 ジャンル別カラーの取得ヘルパー関数
+// --------------------------------------------------
+function getGenreStyle(genre) {
+  if (!genre || genre === 'ジャンル不明' || !genreColors[genre]) {
+    return { bg: '#2a2a2a', text: '#ffffff' };
+  }
+  const color = genreColors[genre];
+  return {
+    bg: color.bg || '#2a2a2a',
+    text: color.text || '#ffffff'
+  };
 }
 </script>
 </body>
