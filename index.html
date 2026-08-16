@@ -1613,13 +1613,12 @@ function startSeekBarUpdater() {
 }
 
 // --------------------------------------------------
-// --------------------------------------------------
-// ランキング表示（ジャンルカラー対応版）
+// ランキング表示（ジャンルタグ背景色変更版）
 // --------------------------------------------------
 function renderRankingUI() {
   if (currentMode === 'analytics' || currentMode === 'recommend') return;
 
-  const listEl = document.getElementById('rank-list'); // IDを正しく指定
+  const listEl = document.getElementById('rank-list');
   if (!listEl) return;
 
   const searchInput = document.getElementById('rank-search');
@@ -1646,11 +1645,6 @@ function renderRankingUI() {
     const li = document.createElement('li');
     li.className = 'rank-item';
     if (currentSong && song.id === currentSong.id) li.classList.add('active');
-
-    // ★ ジャンルカラーを各行の背景色・文字色にセット
-    const gStyle = getGenreStyle(song.genre);
-    li.style.backgroundColor = gStyle.bg;
-    li.style.color = gStyle.text;
 
     li.onclick = (e) => {
       e.stopPropagation();
@@ -1682,13 +1676,16 @@ function renderRankingUI() {
       `;
     }
 
+    // ★ ジャンルタグ用のスタイルを取得（背景色と自動計算された白/黒）
+    const gStyle = getGenreStyle(song.genre);
+
     li.innerHTML = `
       <span class="rank-num">${index + 1}位</span>
       ${moveButtonsHtml}
       <img src="https://i.ytimg.com/vi/${song.youtubeId}/default.jpg" class="rank-thumb" loading="lazy" alt="">
       <span class="rank-tier-tag">${song.tier}</span>
-      <span class="rank-genre-tag">${song.genre || 'ジャンル不明'}</span>
-      <span class="rank-name" style="color: ${gStyle.text};">${song.title}</span>
+      <span class="rank-genre-tag" style="background-color: ${gStyle.bg}; color: ${gStyle.text}; border: none;">${song.genre || 'ジャンル不明'}</span>
+      <span class="rank-name">${song.title}</span>
       ${metaStatsHtml}
       <button class="rank-del-btn" onclick="deleteSong('${song.id}', event)">✕</button>
     `;
@@ -1901,22 +1898,25 @@ function renderGenreColorSettingsUI() {
     return;
   }
 
-  let html = '<table style="margin-top: 5px; width: 100%;"><thead><tr><th>ジャンル名</th><th>1位/2位...行背景色</th><th>文字色</th><th>プレビュー</th></tr></thead><tbody>';
+  let html = '<table style="margin-top: 5px; width: 100%; border-collapse: collapse;"><thead><tr><th style="text-align: left; padding: 6px;">ジャンル名</th><th style="padding: 6px;">タグ色</th><th style="padding: 6px;">プレビュー</th></tr></thead><tbody>';
 
   uniqueGenres.forEach(genre => {
-    const setting = genreColors[genre] || { bg: '#2a2a2a', text: '#ffffff' };
+    // 古いデータ構造（bg/textオブジェクト）に対応
+    const savedSetting = genreColors[genre];
+    const defaultBg = (typeof savedSetting === 'object' && savedSetting.bg) ? savedSetting.bg : (typeof savedSetting === 'string' ? savedSetting : '#444444');
+    
+    // プレビュー用の文字色を計算
+    const previewText = getContrastColor(defaultBg);
+
     html += `
       <tr>
-        <td style="padding: 6px; font-weight: bold;">${genre}</td>
-        <td style="padding: 6px; text-align: center;">
-          <input type="color" id="g-bg-${genre}" value="${setting.bg || '#2a2a2a'}" onchange="previewGenreColor('${genre}')">
+        <td style="padding: 6px; font-weight: bold; border-bottom: 1px solid #333;">${genre}</td>
+        <td style="padding: 6px; text-align: center; border-bottom: 1px solid #333;">
+          <input type="color" id="g-bg-${genre}" value="${defaultBg}" onchange="previewGenreColor('${genre}')" style="cursor: pointer;">
         </td>
-        <td style="padding: 6px; text-align: center;">
-          <input type="color" id="g-text-${genre}" value="${setting.text || '#ffffff'}" onchange="previewGenreColor('${genre}')">
-        </td>
-        <td style="padding: 6px; text-align: center;">
-          <span id="g-prev-${genre}" style="background-color: ${setting.bg || '#2a2a2a'}; color: ${setting.text || '#ffffff'}; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">
-            1位 Sample Song
+        <td style="padding: 6px; text-align: center; border-bottom: 1px solid #333;">
+          <span id="g-prev-${genre}" class="rank-genre-tag" style="background-color: ${defaultBg}; color: ${previewText}; border: none; display: inline-block;">
+            ${genre}
           </span>
         </td>
       </tr>
@@ -1929,27 +1929,22 @@ function renderGenreColorSettingsUI() {
 
 function previewGenreColor(genre) {
   const bg = document.getElementById(`g-bg-${genre}`).value;
-  const text = document.getElementById(`g-text-${genre}`).value;
   const prev = document.getElementById(`g-prev-${genre}`);
   if (prev) {
     prev.style.backgroundColor = bg;
-    prev.style.color = text;
+    prev.style.color = getContrastColor(bg); // プレビューも自動で白黒切り替え
   }
 }
 
-// カラー設定の保存
+// カラー設定の保存（背景色のみ保存する構造へ変更）
 function saveGenreColors() {
   const uniqueGenres = [...new Set(songs.map(s => s.genre).filter(g => g && g !== 'ジャンル不明'))];
   const newGenreColors = { ...genreColors };
 
   uniqueGenres.forEach(genre => {
     const bgInput = document.getElementById(`g-bg-${genre}`);
-    const textInput = document.getElementById(`g-text-${genre}`);
-    if (bgInput && textInput) {
-      newGenreColors[genre] = {
-        bg: bgInput.value,
-        text: textInput.value
-      };
+    if (bgInput) {
+      newGenreColors[genre] = { bg: bgInput.value };
     }
   });
 
@@ -1958,10 +1953,11 @@ function saveGenreColors() {
       showToast('保存に失敗しました');
     } else {
       showToast('ジャンル別カラー設定を保存しました');
-      renderRankingUI(); // 保存後にランキング一覧へ即座に反映
+      renderRankingUI(); 
     }
   });
 }
+
 
 // --------------------------------------------------
 // 🎯 おすすめ機能のリスト描画部分の更新
@@ -1989,16 +1985,33 @@ function applyGenreColorTheme() {
 }
 
 // --------------------------------------------------
-// 🎨 ジャンル別カラーの取得ヘルパー関数
+// 🎨 ジャンル別カラー取得と文字色自動判定
 // --------------------------------------------------
+// 背景色の明るさを計算し、見やすい文字色（白か黒）を返す
+function getContrastColor(hexColor) {
+  // "#RRGGBB" 形式を想定
+  if (!hexColor || hexColor.length !== 7) return '#ffffff';
+  
+  const r = parseInt(hexColor.substr(1, 2), 16);
+  const g = parseInt(hexColor.substr(3, 2), 16);
+  const b = parseInt(hexColor.substr(5, 2), 16);
+  
+  // YIQ色空間による明るさ（輝度）計算
+  const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+  
+  // 明るさが128以上なら黒文字、未満なら白文字
+  return (yiq >= 128) ? '#000000' : '#ffffff';
+}
+
 function getGenreStyle(genre) {
-  if (!genre || genre === 'ジャンル不明' || !genreColors[genre]) {
-    return { bg: '#2a2a2a', text: '#ffffff' };
+  // 設定がない場合はデフォルトのグレー背景と白文字
+  if (!genre || genre === 'ジャンル不明' || !genreColors[genre] || !genreColors[genre].bg) {
+    return { bg: '#444', text: '#ffffff' }; 
   }
-  const color = genreColors[genre];
+  const bgColor = genreColors[genre].bg;
   return {
-    bg: color.bg || '#2a2a2a',
-    text: color.text || '#ffffff'
+    bg: bgColor,
+    text: getContrastColor(bgColor)
   };
 }
 </script>
