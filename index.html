@@ -523,6 +523,19 @@ songsRef.on('value', (snapshot) => {
     if (!player || !player.getVideoData) {
       loadCurrentSong(false);
     }
+
+    // Firebaseの on('value', ...) コールバック内の最後付近
+    // データをパースして songs 配列を更新した後の処理：
+    
+    if (currentMode === 'genreTop') {
+      updateGenreTopList();
+    } else if (currentMode === 'recommend') {
+      computeAndRenderRecommendations();
+    } else {
+      // その他のモード
+      updatePlaylistByMode(currentMode === 'bottom' || currentMode === 'top20');
+      renderRankingUI();
+    }
   }
 });
 
@@ -1117,6 +1130,12 @@ function updatePlaylistByMode(forceReshuffle = false) {
 
   if (currentMode === 'recommend') {
     computeAndRenderRecommendations();
+    return;
+  }
+  
+  // ★ 追加：ジャンルTOPモード時は専用のフィルタリング・ソートを実行して終了
+  if (currentMode === 'genreTop') {
+    updateGenreTopList();
     return;
   }
 
