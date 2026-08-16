@@ -288,6 +288,14 @@
   </div>
 
   <div class="card">
+    <h3>🎨 ジャンル別カラー設定</h3>
+    <p style="font-size: 12px; color: #888;">
+      ジャンルごとにコンテナ（カード）の背景色とアクセント色（テキスト色）を設定できます。
+    </p>
+    <div id="genre-color-settings"></div>
+    <div style="margin-top: 10px;">
+      <button onclick="saveGenreColors()">💾 カラー設定を保存</button>
+    </div>
     <h3>➕ 新規曲追加</h3>
     <input type="text" id="input-title" placeholder="曲名">
     <input type="text" id="input-ytid" placeholder="YouTube ID または URL">
@@ -1440,6 +1448,7 @@ function updateTrackInfoDisplay() {
       document.getElementById('edit-title-input').value = song.title;
       document.getElementById('edit-genre-input').value = (song.genre && song.genre !== 'ジャンル不明') ? song.genre : '';
     }
+    applyGenreColorTheme();
   }
 }
 
@@ -1860,6 +1869,121 @@ function importData(event) {
     }
   };
   reader.readAsText(file);
+}
+
+// --------------------------------------------------
+// 🎨 ジャンル別カラー設定変数
+// --------------------------------------------------
+let genreColors = {}; // { "Electronic": { bg: "#1e2a3a", text: "#00e5ff" } }
+const genreColorsRef = db.ref('music_chart/genre_colors');
+
+// --------------------------------------------------
+// 🔥 Firebaseリアルタイム同期（ジャンル別カラー設定）
+// --------------------------------------------------
+genreColorsRef.on('value', (snapshot) => {
+  genreColors = snapshot.val() || {};
+  applyGenreColorTheme();
+  renderGenreColorSettingsUI();
+});
+
+// 現在再生中の曲のジャンルに応じてコンテナ（カード）の色を適用
+function applyGenreColorTheme() {
+  const cards = document.querySelectorAll('.card');
+  const currentSong = currentPlaylist[currentIndex];
+
+  if (!currentSong || !currentSong.genre || currentSong.genre === 'ジャンル不明' || !genreColors[currentSong.genre]) {
+    // 未設定またはジャンル不明の場合はデフォルト色を維持
+    cards.forEach(card => {
+      card.style.backgroundColor = '#1e1e1e';
+    });
+    // タイトルH1/H2のアクセントカラーもデフォルトへ
+    document.querySelectorAll('h1, h2').forEach(el => el.style.color = '#00ffcc');
+    return;
+  }
+
+  const colorSetting = genreColors[currentSong.genre];
+  cards.forEach(card => {
+    if (colorSetting.bg) card.style.backgroundColor = colorSetting.bg;
+  });
+
+  if (colorSetting.text) {
+    document.querySelectorAll('h1, h2').forEach(el => el.style.color = colorSetting.text);
+  }
+}
+
+// 下部設定エリアのジャンルカラー編集UI生成
+function renderGenreColorSettingsUI() {
+  const container = document.getElementById('genre-color-settings');
+  if (!container) return;
+
+  // 存在するすべてのユニークなジャンルを抽出（'ジャンル不明' 除外）
+  const uniqueGenres = [...new Set(songs.map(s => s.genre).filter(g => g && g !== 'ジャンル不明'))].sort();
+
+  if (uniqueGenres.length === 0) {
+    container.innerHTML = '<div style="color:#888; font-size:12px;">登録されているジャンルがありません。</div>';
+    return;
+  }
+
+  let html = '<table style="margin-top: 5px;"><thead><tr><th>ジャンル名</th><th>背景色</th><th>アクセント色</th><th>プレビュー</th></tr></thead><tbody>';
+
+  uniqueGenres.forEach(genre => {
+    const setting = genreColors[genre] || { bg: '#1e1e1e', text: '#00ffcc' };
+    html += `
+      <tr>
+        <td style="padding: 6px; font-weight: bold;">${genre}</td>
+        <td style="padding: 6px; text-align: center;">
+          <input type="color" id="g-bg-${genre}" value="${setting.bg || '#1e1e1e'}" onchange="previewGenreColor('${genre}')">
+        </td>
+        <td style="padding: 6px; text-align: center;">
+          <input type="color" id="g-text-${genre}" value="${setting.text || '#00ffcc'}" onchange="previewGenreColor('${genre}')">
+        </td>
+        <td style="padding: 6px; text-align: center;">
+          <span id="g-prev-${genre}" style="background-color: ${setting.bg || '#1e1e1e'}; color: ${setting.text || '#00ffcc'}; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">
+            ${genre}
+          </span>
+        </td>
+      </tr>
+    `;
+  });
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function previewGenreColor(genre) {
+  const bg = document.getElementById(`g-bg-${genre}`).value;
+  const text = document.getElementById(`g-text-${genre}`).value;
+  const prev = document.getElementById(`g-prev-${genre}`);
+  if (prev) {
+    prev.style.backgroundColor = bg;
+    prev.style.color = text;
+  }
+}
+
+// Firebaseへのカラー設定保存
+function saveGenreColors() {
+  const uniqueGenres = [...new Set(songs.map(s => s.genre).filter(g => g && g !== 'ジャンル不明'))];
+  const newGenreColors = { ...genreColors };
+
+  uniqueGenres.forEach(genre => {
+    const bgInput = document.getElementById(`g-bg-${genre}`);
+    const textInput = document.getElementById(`g-text-${genre}`);
+    if (bgInput && textInput) {
+      newGenreColors[genre] = {
+        bg: bgInput.value,
+        text: textInput.value
+      };
+    }
+  });
+
+  genreColorsRef.set(newGenreColors, (error) => {
+    if (error) {
+      showToast('保存に失敗しました');
+    } else {
+      showToast('ジャンル別カラー設定を保存しました');
+      applyGenreColorTheme();
+    }
+  });
 }
 </script>
 </body>
