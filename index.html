@@ -1872,51 +1872,22 @@ function importData(event) {
 }
 
 // --------------------------------------------------
-// 🎨 ジャンル別カラー設定変数
+// 🎨 ジャンル別カラー設定 UI & Firebase同期
 // --------------------------------------------------
-let genreColors = {}; // { "Electronic": { bg: "#1e2a3a", text: "#00e5ff" } }
+let genreColors = {};
 const genreColorsRef = db.ref('music_chart/genre_colors');
 
-// --------------------------------------------------
-// 🔥 Firebaseリアルタイム同期（ジャンル別カラー設定）
-// --------------------------------------------------
 genreColorsRef.on('value', (snapshot) => {
   genreColors = snapshot.val() || {};
-  applyGenreColorTheme();
+  renderRankingUI(); // カラー読み込み時にランキングを再描画
   renderGenreColorSettingsUI();
 });
-
-// 現在再生中の曲のジャンルに応じてコンテナ（カード）の色を適用
-function applyGenreColorTheme() {
-  const cards = document.querySelectorAll('.card');
-  const currentSong = currentPlaylist[currentIndex];
-
-  if (!currentSong || !currentSong.genre || currentSong.genre === 'ジャンル不明' || !genreColors[currentSong.genre]) {
-    // 未設定またはジャンル不明の場合はデフォルト色を維持
-    cards.forEach(card => {
-      card.style.backgroundColor = '#1e1e1e';
-    });
-    // タイトルH1/H2のアクセントカラーもデフォルトへ
-    document.querySelectorAll('h1, h2').forEach(el => el.style.color = '#00ffcc');
-    return;
-  }
-
-  const colorSetting = genreColors[currentSong.genre];
-  cards.forEach(card => {
-    if (colorSetting.bg) card.style.backgroundColor = colorSetting.bg;
-  });
-
-  if (colorSetting.text) {
-    document.querySelectorAll('h1, h2').forEach(el => el.style.color = colorSetting.text);
-  }
-}
 
 // 下部設定エリアのジャンルカラー編集UI生成
 function renderGenreColorSettingsUI() {
   const container = document.getElementById('genre-color-settings');
   if (!container) return;
 
-  // 存在するすべてのユニークなジャンルを抽出（'ジャンル不明' 除外）
   const uniqueGenres = [...new Set(songs.map(s => s.genre).filter(g => g && g !== 'ジャンル不明'))].sort();
 
   if (uniqueGenres.length === 0) {
@@ -1924,22 +1895,22 @@ function renderGenreColorSettingsUI() {
     return;
   }
 
-  let html = '<table style="margin-top: 5px;"><thead><tr><th>ジャンル名</th><th>背景色</th><th>アクセント色</th><th>プレビュー</th></tr></thead><tbody>';
+  let html = '<table style="margin-top: 5px; width: 100%;"><thead><tr><th>ジャンル名</th><th>1位/2位...行背景色</th><th>文字色</th><th>プレビュー</th></tr></thead><tbody>';
 
   uniqueGenres.forEach(genre => {
-    const setting = genreColors[genre] || { bg: '#1e1e1e', text: '#00ffcc' };
+    const setting = genreColors[genre] || { bg: '#2a2a2a', text: '#ffffff' };
     html += `
       <tr>
         <td style="padding: 6px; font-weight: bold;">${genre}</td>
         <td style="padding: 6px; text-align: center;">
-          <input type="color" id="g-bg-${genre}" value="${setting.bg || '#1e1e1e'}" onchange="previewGenreColor('${genre}')">
+          <input type="color" id="g-bg-${genre}" value="${setting.bg || '#2a2a2a'}" onchange="previewGenreColor('${genre}')">
         </td>
         <td style="padding: 6px; text-align: center;">
-          <input type="color" id="g-text-${genre}" value="${setting.text || '#00ffcc'}" onchange="previewGenreColor('${genre}')">
+          <input type="color" id="g-text-${genre}" value="${setting.text || '#ffffff'}" onchange="previewGenreColor('${genre}')">
         </td>
         <td style="padding: 6px; text-align: center;">
-          <span id="g-prev-${genre}" style="background-color: ${setting.bg || '#1e1e1e'}; color: ${setting.text || '#00ffcc'}; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">
-            ${genre}
+          <span id="g-prev-${genre}" style="background-color: ${setting.bg || '#2a2a2a'}; color: ${setting.text || '#ffffff'}; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">
+            1位 Sample Song
           </span>
         </td>
       </tr>
@@ -1960,7 +1931,7 @@ function previewGenreColor(genre) {
   }
 }
 
-// Firebaseへのカラー設定保存
+// カラー設定の保存
 function saveGenreColors() {
   const uniqueGenres = [...new Set(songs.map(s => s.genre).filter(g => g && g !== 'ジャンル不明'))];
   const newGenreColors = { ...genreColors };
@@ -1981,10 +1952,31 @@ function saveGenreColors() {
       showToast('保存に失敗しました');
     } else {
       showToast('ジャンル別カラー設定を保存しました');
-      applyGenreColorTheme();
+      renderRankingUI(); // 保存後にランキング一覧へ即座に反映
     }
   });
 }
+
+// --------------------------------------------------
+// 🎯 おすすめ機能のリスト描画部分の更新
+// --------------------------------------------------
+// computeAndRenderRecommendations 関数内の renderGroup も同様にジャンル色を反映
+const renderGroup = (list, isPositive) => list.map(i => {
+  const style = getGenreStyle(i.genre);
+  return `
+    <li class="rank-item" 
+        style="background-color: ${style.bg}; color: ${style.text}; border: 1px solid ${style.border};" 
+        onclick="selectSongById('${i.id}')">
+      <img src="https://i.ytimg.com/vi/${i.youtubeId}/default.jpg" class="rank-thumb" loading="lazy" alt="">
+      <span class="rank-tier-tag">${i.tier}</span>
+      <span class="rank-genre-tag">${i.genre}</span>
+      <span class="rank-name" style="color: ${style.text}">${i.title}</span>
+      <span style="font-size:12px; color:${isPositive ? '#00ffcc' : '#ff8888'}; margin-right:8px; white-space:nowrap;">
+        好き度${i.favRank}位 / 直近3日再生数${i.engRank}位 (${i.recentPlays}回, ${i.gap > 0 ? '+' : ''}${i.gap})
+      </span>
+    </li>
+  `;
+}).join('');
 </script>
 </body>
 </html>
