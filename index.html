@@ -1977,6 +1977,31 @@ const renderGroup = (list, isPositive) => list.map(i => {
     </li>
   `;
 }).join('');
+
+// 現在再生中の曲のジャンルに応じてコンテナ（カード）の色を適用
+function applyGenreColorTheme() {
+  const cards = document.querySelectorAll('.card');
+  const currentSong = currentPlaylist[currentIndex];
+
+  if (!currentSong || !currentSong.genre || currentSong.genre === 'ジャンル不明' || !genreColors[currentSong.genre]) {
+    // 未設定またはジャンル不明の場合はデフォルト色を維持
+    cards.forEach(card => {
+      card.style.backgroundColor = '#1e1e1e';
+    });
+    // タイトルH1/H2のアクセントカラーもデフォルトへ
+    document.querySelectorAll('h1, h2').forEach(el => el.style.color = '#00ffcc');
+    return;
+  }
+
+  const colorSetting = genreColors[currentSong.genre];
+  cards.forEach(card => {
+    if (colorSetting.bg) card.style.backgroundColor = colorSetting.bg;
+  });
+
+  if (colorSetting.text) {
+    document.querySelectorAll('h1, h2').forEach(el => el.style.color = colorSetting.text);
+  }
+}
 </script>
 </body>
 </html>
