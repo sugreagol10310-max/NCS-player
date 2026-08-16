@@ -1135,7 +1135,7 @@ function updatePlaylistByMode(forceReshuffle = false) {
 }
 
 // --------------------------------------------------
-// 🎯 おすすめ機能（好き度ランキング と 実際の再生数ランキング のズレ検出）
+// 🎯 おすすめ機能（好き度ランキング と 直近3日間の再生数ランキング のズレ検出）
 // --------------------------------------------------
 function computeAndRenderRecommendations() {
   const container = document.getElementById('recommend-list-body');
@@ -1147,8 +1147,22 @@ function computeAndRenderRecommendations() {
     return;
   }
 
+  // 直近3日前のスナップショットを取得
+  const availableDates = Object.keys(allHistoryData).sort();
+  const d3 = new Date();
+  d3.setDate(d3.getDate() - 3);
+  const target3DaysAgoStr = d3.toISOString().split('T')[0];
+  const date3DaysAgoUsed = findClosestPastSnapshotDate(target3DaysAgoStr, availableDates);
+  const snapshot3DaysAgo = date3DaysAgoUsed ? (allHistoryData[date3DaysAgoUsed]?.songs || null) : null;
+
+  // 各曲の直近3日間の再生回数を算出
+  const get3DaysPlayCount = (s) => {
+    const startPlays = snapshot3DaysAgo && snapshot3DaysAgo[s.id] ? (snapshot3DaysAgo[s.id].playCount || 0) : 0;
+    return Math.max(0, (s.playCount || 0) - startPlays);
+  };
+
   const favoriteRanked = [...songs].sort((a, b) => a.order - b.order);
-  const engagementRanked = [...songs].sort((a, b) => b.playCount - a.playCount);
+  const engagementRanked = [...songs].sort((a, b) => get3DaysPlayCount(b) - get3DaysPlayCount(a));
 
   const favoriteRankMap = {};
   favoriteRanked.forEach((s, idx) => { favoriteRankMap[s.id] = idx + 1; });
@@ -1158,15 +1172,16 @@ function computeAndRenderRecommendations() {
   const items = songs.map(s => {
     const favRank = favoriteRankMap[s.id];
     const engRank = engagementRankMap[s.id];
+    const recentPlays = get3DaysPlayCount(s);
     return {
       id: s.id, title: s.title, tier: s.tier, genre: s.genre || 'ジャンル不明',
-      youtubeId: s.youtubeId, favRank, engRank, gap: favRank - engRank
+      youtubeId: s.youtubeId, favRank, engRank, gap: favRank - engRank, recentPlays
     };
   });
 
-  // gap > 0 : 好き度ランキングは低い(数字が大きい)のに、実際はよく再生されている＝隠れたお気に入り
+  // gap > 0 : 好き度順位は低い（数字が大きい）のに、直近3日間でよく聴かれている
   const hiddenGems = items.filter(i => i.gap > 0).sort((a, b) => b.gap - a.gap).slice(0, 8);
-  // gap < 0 : 好き度ランキングは高い(数字が小さい)のに、実際はあまり再生されていない
+  // gap < 0 : 好き度順位は高い（数字が小さい）のに、直近3日間であまり聴かれていない
   const overrated = items.filter(i => i.gap < 0).sort((a, b) => a.gap - b.gap).slice(0, 8);
 
   const renderGroup = (list, isPositive) => list.map(i => `
@@ -1176,15 +1191,18 @@ function computeAndRenderRecommendations() {
       <span class="rank-genre-tag">${i.genre}</span>
       <span class="rank-name">${i.title}</span>
       <span style="font-size:12px; color:${isPositive ? '#00ffcc' : '#ff8888'}; margin-right:8px; white-space:nowrap;">
-        好き度${i.favRank}位 / 再生数${i.engRank}位 (${i.gap > 0 ? '+' : ''}${i.gap})
+        好き度${i.favRank}位 / 直近3日再生数${i.engRank}位 (${i.recentPlays}回, ${i.gap > 0 ? '+' : ''}${i.gap})
       </span>
     </li>
   `).join('');
 
+  const dateLabelText = date3DaysAgoUsed ? `📅 基準日: ${date3DaysAgoUsed} 以降のデータと比較中` : '※過去データ蓄積前のため累計再生数で暫定計算しています';
+
   container.innerHTML = `
-    <h3>🔺 意外と聴いている曲（過小評価かも）</h3>
+    <div style="font-size:12px; color:#ffaa00; margin-bottom:10px;">${dateLabelText}</div>
+    <h3>🔺 直近3日間で意外と聴いている曲（過小評価かも）</h3>
     <ul class="rank-list" style="max-height:none;">${hiddenGems.length ? renderGroup(hiddenGems, true) : '<li style="padding:10px;color:#888;background:transparent;cursor:default;">該当なし</li>'}</ul>
-    <h3 style="margin-top:20px;">🔻 好きな割に聴いていない曲</h3>
+    <h3 style="margin-top:20px;">🔻 好きな割に直近3日間聴いていない曲</h3>
     <ul class="rank-list" style="max-height:none;">${overrated.length ? renderGroup(overrated, false) : '<li style="padding:10px;color:#888;background:transparent;cursor:default;">該当なし</li>'}</ul>
   `;
 
@@ -1192,6 +1210,30 @@ function computeAndRenderRecommendations() {
   if (currentPlaylist.length === 0) currentPlaylist = [...songs];
 }
 
+// モード切替関数（fetchPastHistory の呼び出し対象に recommend を追加）
+function setMode(mode, e) {
+  document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+  e.target.classList.add('active');
+  currentMode = mode;
+
+  const reshuffleBtn = document.getElementById('reshuffle-btn');
+  if (reshuffleBtn) reshuffleBtn.style.display = (mode === 'bottom' || mode === 'top20') ? 'inline-block' : 'none';
+
+  const proceed = () => {
+    updatePlaylistByMode(mode === 'bottom' || mode === 'top20');
+    relocateCurrentSong();
+    renderRankingUI();
+    updateTrackInfoDisplay();
+    updateTrendingInfoLabel();
+  };
+
+  if (mode === 'trending' || mode === 'analytics' || mode === 'recommend') {
+    fetchPastHistory(proceed);
+  } else {
+    proceed();
+  }
+}
+  
 function selectSongById(id) {
   if (isTransitioning) return;
   const idx = currentPlaylist.findIndex(s => s.id === id);
