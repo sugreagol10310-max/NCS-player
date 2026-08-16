@@ -1629,7 +1629,7 @@ function startSeekBarUpdater() {
 }
 
 // --------------------------------------------------
-// ランキング表示（ジャンルタグ背景色変更版）
+// ランキング表示（全モード・ジャンルTOP対応 完全版）
 // --------------------------------------------------
 function renderRankingUI() {
   if (currentMode === 'analytics' || currentMode === 'recommend') return;
@@ -1637,29 +1637,29 @@ function renderRankingUI() {
   const listEl = document.getElementById('rank-list');
   if (!listEl) return;
 
-  // ... (省略) ...
+  // 検索入力値の取得
+  const searchInput = document.getElementById('rank-search');
+  const searchTerm = searchInput ? searchInput.value.trim().toLowerCase() : '';
+
+  listEl.innerHTML = '';
+  const currentSong = currentPlaylist[currentIndex];
 
   let lastTier = null;
-  // ★ currentMode === 'genreTop' を isFlatRankedMode の判定から除外し、個別で判定
   const isFlatRankedMode = (currentMode === 'playCount' || currentMode === 'trending' || currentMode === 'watchTime');
-  
-  // ★ ジャンルTOPモードの判定
   const isGenreTopMode = (currentMode === 'genreTop');
   const genreSortType = isGenreTopMode ? document.getElementById('genre-sort-select')?.value : null;
 
-  // ターゲットリストの決定
   let targetList = currentPlaylist;
   if (currentMode === 'top20') {
     targetList = songs.slice(0, 20);
   } else if (currentMode === 'all') {
-    targetList = songs; // allの場合は元の順序のsongsを表示
+    targetList = songs;
   }
 
   targetList.forEach((song, index) => {
     if (searchTerm && !song.title.toLowerCase().includes(searchTerm)) return;
 
-    // ★ Tierヘッダーの表示条件を調整：
-    // isFlatRankedMode ではなく、かつ (genreTopモードではない OR genreTopモードで「好き度順」のとき) のみ表示
+    // Tierヘッダーの表示判定（ジャンルTOPかつ「好き度順」の場合も表示）
     const showTierHeader = !isFlatRankedMode && (!isGenreTopMode || genreSortType === 'favorite');
 
     if (showTierHeader && song.tier !== lastTier) {
@@ -1705,7 +1705,6 @@ function renderRankingUI() {
       `;
     }
 
-    // ★ ジャンルタグ用のスタイルを取得（背景色と自動計算された白/黒）
     const gStyle = getGenreStyle(song.genre);
 
     li.innerHTML = `
