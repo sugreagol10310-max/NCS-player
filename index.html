@@ -542,7 +542,6 @@ songsRef.on('value', (snapshot) => {
         totalWatchTime = Math.round(duration * 0.5 * effectivePlays);
       }
 
-      // Moodデータの解析（配列あるいはカンマ区切り文字列を最大3つの配列へ変換）
       let songMoods = [];
       if (Array.isArray(s.moods)) {
         songMoods = s.moods;
@@ -1519,7 +1518,6 @@ function updateTrackInfoDisplay() {
     document.getElementById('display-title').innerText = song.title;
     document.getElementById('display-genre').innerText = song.genre || 'ジャンル不明';
     
-    // Mood表示
     const moodSpan = document.getElementById('display-mood');
     if (song.moods && song.moods.length > 0) {
       moodSpan.innerHTML = song.moods.map(m => {
@@ -1540,13 +1538,6 @@ function updateTrackInfoDisplay() {
     document.getElementById('display-tier').innerText = `${song.tier} (${tierObj.name})`;
     document.getElementById('select-tier').value = song.tier;
     document.getElementById('input-direct-rank').placeholder = `${song.order + 1}位`;
-
-    const editForm = document.getElementById('edit-song-form');
-    if (editForm && editForm.style.display !== 'none') {
-      document.getElementById('edit-title-input').value = song.title;
-      document.getElementById('edit-genre-input').value = (song.genre && song.genre !== 'ジャンル不明') ? song.genre : '';
-      document.getElementById('edit-mood-input').value = (song.moods && song.moods.length) ? song.moods.join(', ') : '';
-    }
   }
 }
 
@@ -1797,7 +1788,6 @@ function renderRankingUI() {
 
     const gStyle = getGenreStyle(song.genre);
     
-    // Moodタグの生成 (最大3個)
     let moodsHtml = '';
     if (song.moods && song.moods.length > 0) {
       moodsHtml = song.moods.map(m => {
@@ -2037,6 +2027,13 @@ function renderGenreColorSettingsUI() {
   const container = document.getElementById('genre-color-settings');
   if (!container) return;
 
+  // 現在DOM上にある色の入力値を保持（同期時のリセット防止）
+  const currentInputs = {};
+  container.querySelectorAll('input[type="color"]').forEach(input => {
+    const genre = input.id.replace('g-bg-', '');
+    currentInputs[genre] = input.value;
+  });
+
   const uniqueGenres = [...new Set(songs.map(s => s.genre).filter(g => g && g !== 'ジャンル不明'))].sort();
 
   if (uniqueGenres.length === 0) {
@@ -2048,7 +2045,12 @@ function renderGenreColorSettingsUI() {
 
   uniqueGenres.forEach(genre => {
     const savedSetting = genreColors[genre];
-    const defaultBg = (typeof savedSetting === 'object' && savedSetting.bg) ? savedSetting.bg : (typeof savedSetting === 'string' ? savedSetting : '#444444');
+    let defaultBg = (typeof savedSetting === 'object' && savedSetting.bg) ? savedSetting.bg : (typeof savedSetting === 'string' ? savedSetting : '#444444');
+    
+    if (currentInputs[genre] !== undefined) {
+      defaultBg = currentInputs[genre];
+    }
+
     const previewText = getContrastColor(defaultBg);
 
     html += `
@@ -2120,6 +2122,13 @@ function renderMoodColorSettingsUI() {
   const container = document.getElementById('mood-color-settings');
   if (!container) return;
 
+  // 現在DOM上にある色の入力値を保持（同期時のリセット防止）
+  const currentInputs = {};
+  container.querySelectorAll('input[type="color"]').forEach(input => {
+    const mood = input.id.replace('m-bg-', '');
+    currentInputs[mood] = input.value;
+  });
+
   const allMoods = [];
   songs.forEach(s => {
     if (s.moods && Array.isArray(s.moods)) {
@@ -2137,7 +2146,12 @@ function renderMoodColorSettingsUI() {
 
   uniqueMoods.forEach(mood => {
     const savedSetting = moodColors[mood];
-    const defaultBg = (typeof savedSetting === 'object' && savedSetting.bg) ? savedSetting.bg : (typeof savedSetting === 'string' ? savedSetting : '#553355');
+    let defaultBg = (typeof savedSetting === 'object' && savedSetting.bg) ? savedSetting.bg : (typeof savedSetting === 'string' ? savedSetting : '#553355');
+    
+    if (currentInputs[mood] !== undefined) {
+      defaultBg = currentInputs[mood];
+    }
+
     const previewText = getContrastColor(defaultBg);
 
     html += `
@@ -2278,7 +2292,6 @@ function updateMoodTopList() {
 
   if (!mood) return;
 
-  // 設定されたMood（最大3つ）のいずれかに選択ムードが含まれている楽曲を抽出
   let filtered = songs.filter(s => s.moods && Array.isArray(s.moods) && s.moods.includes(mood));
 
   if (sortType === 'favorite') {
