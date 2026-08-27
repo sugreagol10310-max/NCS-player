@@ -598,8 +598,16 @@ songsRef.on('value', (snapshot) => {
 
   if (data) {
     let rawSongs = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-    // データ初期ロード時のフォールバックとしてscoreベースのソートを残す
-    rawSongs.sort((a, b) => (b.score || 0) - (a.score || 0));
+    
+    // 【修正箇所】新しく設定された`order`を優先し、それが無い古いデータは`score`で降順ソート
+    rawSongs.sort((a, b) => {
+      const orderA = a.order !== undefined ? a.order : Number.MAX_SAFE_INTEGER;
+      const orderB = b.order !== undefined ? b.order : Number.MAX_SAFE_INTEGER;
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+      return (b.score || 0) - (a.score || 0);
+    });
 
     songs = rawSongs.map((s, idx) => {
       const duration = s.duration || 200;
@@ -622,6 +630,7 @@ songsRef.on('value', (snapshot) => {
       songMoods = songMoods.slice(0, 3);
 
       return {
+        ...s, // 【修正箇所】互換性確保のため、元々のデータ（旧scoreや直接指定のtier等）を丸ごと引き継ぐ
         id: s.id,
         youtubeId: s.youtubeId,
         title: s.title,
@@ -631,6 +640,7 @@ songsRef.on('value', (snapshot) => {
         totalWatchTime: totalWatchTime,
         genre: s.genre || 'ジャンル不明',
         moods: songMoods,
+        mood: songMoods.join(', '), // 【修正箇所】旧バージョン(文字列管理)との互換性確保
         order: s.order !== undefined ? s.order : idx
       };
     });
@@ -639,7 +649,7 @@ songsRef.on('value', (snapshot) => {
   }
 
   sortSongs();
-  updateSongTiers(); // ソート後にTierを最新状態の順位に更新
+  updateSongTiers(); 
   
   updatePlaylistByMode();
   relocateCurrentSong();
@@ -689,8 +699,9 @@ function saveAllToFirebase() {
   const dataObj = {};
   songs.forEach((s, index) => {
     s.order = index;
-    // tierはクライアント側で動的計算するためDBに保存しなくても運用可能ですが、
-    // バックアップ用や他システム連動用に一応保存しておきます。
+    // 【修正箇所】index(1).htmlが参照する旧データ構造のため、並び順から逆算してscoreとtierを自動付与
+    s.score = songs.length - index; 
+    s.tier = getTierByRank(index + 1); 
     dataObj[s.id] = s;
   });
   songsRef.set(dataObj);
@@ -1588,8 +1599,6 @@ function updateMoodTopList() {
   renderRankingUI();
 }
 
-// 以下、UIレンダリング・YouTubePlayer・曲編集等は文字数制限の都合上、省略不可なので最後まで記述します（主要機能は変更済）。
-
 // --------------------------------------------------
 // ジャンル別 / ムード別 カラー設定
 // --------------------------------------------------
@@ -2024,11 +2033,14 @@ function addNewSong() {
     youtubeId: ytid,
     genre,
     moods,
+    mood: moods.join(', '), // 【修正箇所】旧コード用互換性
     year,
     playCount: 0,
     totalWatchTime: 0,
     duration: 200,
-    order: newOrder
+    order: newOrder,
+    score: 0, // 【修正箇所】旧コード用互換性（新規追加は最下位）
+    tier: getTierByRank(newOrder + 1) // 【修正箇所】旧コード用互換性
   }, () => {
     document.getElementById('input-title').value = '';
     document.getElementById('input-ytid').value = '';
@@ -2064,7 +2076,8 @@ function saveSongEdit() {
   songsRef.child(currentSongId).update({
     title: newTitle,
     genre: newGenre,
-    moods: newMoods
+    moods: newMoods,
+    mood: newMoods.join(', ') // 【修正箇所】旧コード用互換性
   }, () => {
     toggleEditSongForm();
     showToast('保存しました');
@@ -2076,10 +2089,11 @@ function saveSongEdit() {
 // --------------------------------------------------
 function swapSongOrder(idx1, idx2) {
   if (idx1 < 0 || idx1 >= songs.length || idx2 < 0 || idx2 >= songs.length) return;
-  const temp = songs[idx1].order;
-  songs[idx1].order = songs[idx2].order;
-  songs[idx2].order = temp;
-  saveAllToFirebase(); // Firebase更新により、自動的にTierも再計算されます
+  // 【修正箇所】プロパティだけではなく、配列の要素自体を正しく入れ替える
+  const temp = songs[idx1];
+  songs[idx1] = songs[idx2];
+  songs[idx2] = temp;
+  saveAllToFirebase(); 
 }
 
 function moveSong(event, id, direction) {
