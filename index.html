@@ -392,52 +392,63 @@ function showToast(message) {
 }
 
 // --------------------------------------------------
-// 🔥 ティア設定マスター定義 (細分化版)
+// 🔥 ティア設定マスター定義 (順位基準版: 何位以下かを指定)
 // --------------------------------------------------
 const TIER_DEFINITIONS = [
-  { code: "SSSS", name: "GOAT", minScore: 100 },
-  { code: "SSS",  name: "Masterpiece of Masterpiece", minScore: 98 },
-  { code: "SS++", name: "Timeless Masterpiece", minScore: 96 },
-  { code: "SS+",  name: "Absolute Masterpiece", minScore: 94 },
-  { code: "SS",   name: "Masterpiece", minScore: 92 },
-  { code: "S+",   name: "Phenomenal", minScore: 90 },
-  { code: "S",    name: "Phenomenal", minScore: 88 },
-  { code: "S-",   name: "Phenomenal", minScore: 86 },
-  { code: "A+",   name: "Incredible", minScore: 84 },
-  { code: "A",    name: "Incredible", minScore: 82 },
-  { code: "A-",   name: "Incredible", minScore: 80 },
-  { code: "B+",   name: "Excellent", minScore: 78 },
-  { code: "B",    name: "Excellent", minScore: 76 },
-  { code: "B-",   name: "Excellent", minScore: 74 },
-  { code: "C+",   name: "Great", minScore: 72 },
-  { code: "C",    name: "Great", minScore: 70 },
-  { code: "C-",   name: "Great", minScore: 68 },
-  { code: "D+",   name: "Cool", minScore: 66 },
-  { code: "D",    name: "Cool", minScore: 64 },
-  { code: "D-",   name: "Cool", minScore: 62 },
-  { code: "E+",   name: "Good", minScore: 60 },
-  { code: "E",    name: "Good", minScore: 58 },
-  { code: "E-",   name: "Good", minScore: 56 },
-  { code: "F+",   name: "Mid", minScore: 54 },
-  { code: "F",    name: "Mid", minScore: 52 },
-  { code: "F-",   name: "Mid", minScore: 50 },
-  { code: "G+",   name: "Not Bad", minScore: 48 },
-  { code: "G",    name: "Not Bad", minScore: 46 },
-  { code: "H+",   name: "Meh", minScore: 44 },
-  { code: "H",    name: "Meh", minScore: 42 },
-  { code: "H-",   name: "Meh", minScore: 40 },
-  { code: "I+",   name: "Uncool", minScore: 30 },
-  { code: "I",    name: "Uncool", minScore: 20 },
-  { code: "I-",   name: "Uncool", minScore: 10 },
-  { code: "J",    name: "Bad", minScore: 5 },
-  { code: "K",    name: "Too Bad", minScore: 0 }
+  { code: "SSSS", name: "GOAT", maxRank: 1 },
+  { code: "SSS",  name: "Masterpiece of Masterpiece", maxRank: 3 },
+  { code: "SS++", name: "Timeless Masterpiece", maxRank: 5 },
+  { code: "SS+",  name: "Absolute Masterpiece", maxRank: 8 },
+  { code: "SS",   name: "Masterpiece", maxRank: 12 },
+  { code: "S+",   name: "Phenomenal", maxRank: 16 },
+  { code: "S",    name: "Phenomenal", maxRank: 20 },
+  { code: "S-",   name: "Phenomenal", maxRank: 25 },
+  { code: "A+",   name: "Incredible", maxRank: 30 },
+  { code: "A",    name: "Incredible", maxRank: 35 },
+  { code: "A-",   name: "Incredible", maxRank: 40 },
+  { code: "B+",   name: "Excellent", maxRank: 45 },
+  { code: "B",    name: "Excellent", maxRank: 50 },
+  { code: "B-",   name: "Excellent", maxRank: 55 },
+  { code: "C+",   name: "Great", maxRank: 60 },
+  { code: "C",    name: "Great", maxRank: 65 },
+  { code: "C-",   name: "Great", maxRank: 70 },
+  { code: "D+",   name: "Cool", maxRank: 75 },
+  { code: "D",    name: "Cool", maxRank: 80 },
+  { code: "D-",   name: "Cool", maxRank: 85 },
+  { code: "E+",   name: "Good", maxRank: 90 },
+  { code: "E",    name: "Good", maxRank: 95 },
+  { code: "E-",   name: "Good", maxRank: 100 },
+  { code: "F+",   name: "Mid", maxRank: 110 },
+  { code: "F",    name: "Mid", maxRank: 120 },
+  { code: "F-",   name: "Mid", maxRank: 130 },
+  { code: "G+",   name: "Not Bad", maxRank: 140 },
+  { code: "G",    name: "Not Bad", maxRank: 150 },
+  { code: "H+",   name: "Meh", maxRank: 160 },
+  { code: "H",    name: "Meh", maxRank: 170 },
+  { code: "H-",   name: "Meh", maxRank: 180 },
+  { code: "I+",   name: "Uncool", maxRank: 190 },
+  { code: "I",    name: "Uncool", maxRank: 200 },
+  { code: "I-",   name: "Uncool", maxRank: 210 },
+  { code: "J",    name: "Bad", maxRank: 220 },
+  { code: "K",    name: "Too Bad", maxRank: Infinity }
 ];
 
-function scoreToTierCode(score) {
+function rankToTierCode(rank) {
   for (let t of TIER_DEFINITIONS) {
-    if (score >= t.minScore) return t.code;
+    if (rank <= t.maxRank) return t.code;
   }
   return "K";
+}
+
+function getMinRankForTier(tierCode) {
+  let prevMax = 0;
+  for (let t of TIER_DEFINITIONS) {
+    if (t.code === tierCode) {
+      return prevMax + 1;
+    }
+    prevMax = t.maxRank;
+  }
+  return 1;
 }
 
 // --------------------------------------------------
@@ -505,7 +516,8 @@ function initTierSelects() {
   inputTier.innerHTML = '';
 
   TIER_DEFINITIONS.forEach(t => {
-    const opt = `<option value="${t.code}">${t.code} (${t.name})</option>`;
+    const rankLabel = t.maxRank === Infinity ? "その他" : `${t.maxRank}位以下`;
+    const opt = `<option value="${t.code}">${t.code} (${t.name} - ${rankLabel})</option>`;
     selectTier.innerHTML += opt;
     inputTier.innerHTML += opt;
   });
@@ -530,7 +542,7 @@ songsRef.on('value', (snapshot) => {
 
   if (data) {
     let rawSongs = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-    rawSongs.sort((a, b) => (b.score || 0) - (a.score || 0));
+    rawSongs.sort((a, b) => (a.order !== undefined ? a.order : 0) - (b.order !== undefined ? b.order : 0));
 
     songs = rawSongs.map((s, idx) => {
       const duration = s.duration || 200;
@@ -560,7 +572,7 @@ songsRef.on('value', (snapshot) => {
         playCount: playCount,
         duration: duration,
         totalWatchTime: totalWatchTime,
-        tier: s.tier || scoreToTierCode(s.score || 80),
+        tier: rankToTierCode(idx + 1),
         genre: s.genre || 'ジャンル不明',
         moods: songMoods,
         order: s.order !== undefined ? s.order : idx
@@ -619,6 +631,7 @@ function saveAllToFirebase() {
   const dataObj = {};
   songs.forEach((s, index) => {
     s.order = index;
+    s.tier = rankToTierCode(index + 1);
     dataObj[s.id] = s;
   });
   songsRef.set(dataObj);
@@ -626,7 +639,10 @@ function saveAllToFirebase() {
 
 function sortSongs() {
   songs.sort((a, b) => a.order - b.order);
-  songs.forEach((s, i) => s.order = i);
+  songs.forEach((s, i) => {
+    s.order = i;
+    s.tier = rankToTierCode(i + 1);
+  });
 }
 
 function getRetentionRate(song) {
@@ -1458,8 +1474,15 @@ function importCSVData() {
 function changeCurrentSongTier(newTier) {
   if (currentPlaylist.length === 0) return;
   const song = currentPlaylist[currentIndex];
-  song.tier = newTier;
-  db.ref(`music_chart/songs/${song.id}/tier`).set(newTier);
+  const targetRank = getMinRankForTier(newTier);
+  const oldIndex = songs.findIndex(s => s.id === song.id);
+  const newIndex = Math.min(targetRank - 1, songs.length - 1);
+
+  if (oldIndex !== -1 && newIndex >= 0) {
+    songs.splice(oldIndex, 1);
+    songs.splice(newIndex, 0, song);
+    saveAllToFirebase();
+  }
 }
 
 function swapSongOrder(songId, direction, e) {
@@ -1937,6 +1960,9 @@ function addNewSong() {
   const rawMood = moodInput ? moodInput.value.trim() : '';
   const parsedMoods = rawMood ? rawMood.split(',').map(m => m.trim()).filter(Boolean).slice(0, 3) : [];
 
+  const targetRank = getMinRankForTier(tierInput.value);
+  const insertIndex = Math.min(targetRank - 1, songs.length);
+
   const newId = Date.now().toString();
   const newSong = {
     id: newId,
@@ -1945,14 +1971,16 @@ function addNewSong() {
     genre: (genreInput && genreInput.value.trim()) || 'ジャンル不明',
     moods: parsedMoods,
     year: parseInt(yearInput.value) || 2024,
-    tier: tierInput.value,
+    tier: rankToTierCode(insertIndex + 1),
     playCount: 0,
     duration: 200,
     totalWatchTime: 0,
-    order: songs.length
+    order: insertIndex
   };
 
-  db.ref(`music_chart/songs/${newId}`).set(newSong);
+  songs.splice(insertIndex, 0, newSong);
+  saveAllToFirebase();
+
   titleInput.value = '';
   document.getElementById('input-ytid').value = '';
   if (genreInput) genreInput.value = '';
@@ -1988,7 +2016,7 @@ function importData(event) {
         if (confirm(`現在のデータを上書きし、${importedSongs.length}曲をFirebaseへ一括登録しますか？`)) {
           songs = importedSongs.map((s, idx) => ({
             ...s,
-            tier: s.tier || scoreToTierCode(s.score || 80),
+            tier: rankToTierCode(idx + 1),
             moods: Array.isArray(s.moods) ? s.moods.slice(0, 3) : (s.mood ? s.mood.split(',').map(m=>m.trim()).filter(Boolean).slice(0,3) : []),
             order: idx
           }));
@@ -2027,7 +2055,6 @@ function renderGenreColorSettingsUI() {
   const container = document.getElementById('genre-color-settings');
   if (!container) return;
 
-  // 現在DOM上にある色の入力値を保持（同期時のリセット防止）
   const currentInputs = {};
   container.querySelectorAll('input[type="color"]').forEach(input => {
     const genre = input.id.replace('g-bg-', '');
@@ -2122,7 +2149,6 @@ function renderMoodColorSettingsUI() {
   const container = document.getElementById('mood-color-settings');
   if (!container) return;
 
-  // 現在DOM上にある色の入力値を保持（同期時のリセット防止）
   const currentInputs = {};
   container.querySelectorAll('input[type="color"]').forEach(input => {
     const mood = input.id.replace('m-bg-', '');
@@ -2309,4 +2335,3 @@ function updateMoodTopList() {
 </script>
 </body>
 </html>
-
