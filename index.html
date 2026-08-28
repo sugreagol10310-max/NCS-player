@@ -215,7 +215,6 @@
 
           <div style="margin-top: 8px;">
             Tier: <span id="display-tier">-</span>
-            <select id="select-tier" onchange="changeCurrentSongTier(this.value)"></select>
           </div>
           <div style="margin-top: 5px;">
             順位変更: 
@@ -339,7 +338,16 @@
   </div>
 
   <div class="card">
-    <h3>🎨 ジャンル別カラー設定</h3>
+    <h3>🏆 Tier基準設定（何位以下）</h3>
+    <p style="font-size: 12px; color: #888;">
+      各Tierが適用される上限順位（何位以下か）を設定できます。
+    </p>
+    <div id="tier-settings-container"></div>
+    <div style="margin-top: 10px;">
+      <button onclick="saveTierSettings()">💾 Tier設定を保存</button>
+    </div>
+
+    <h3 style="margin-top: 20px;">🎨 ジャンル別カラー設定</h3>
     <p style="font-size: 12px; color: #888;">
       ジャンルごとにタグの背景色を設定できます。
     </p>
@@ -363,7 +371,6 @@
     <input type="text" id="input-genre" placeholder="ジャンル (空欄可)">
     <input type="text" id="input-mood" placeholder="ムード (カンマ区切り最大3つ、空欄可)">
     <input type="number" id="input-year" placeholder="リリース年 (例: 2024)" value="2024">
-    <select id="input-tier"></select>
     <button onclick="addNewSong()">追加</button>
 
     <h3 style="margin-top: 20px;">📥 CSVインポート（データ加算）</h3>
@@ -394,7 +401,7 @@ function showToast(message) {
 // --------------------------------------------------
 // 🔥 ティア設定マスター定義 (順位基準版: 何位以下かを指定)
 // --------------------------------------------------
-const TIER_DEFINITIONS = [
+let TIER_DEFINITIONS = [
   { code: "SSSS", name: "GOAT", maxRank: 1 },
   { code: "SSS",  name: "Masterpiece of Masterpiece", maxRank: 3 },
   { code: "SS++", name: "Timeless Masterpiece", maxRank: 5 },
@@ -470,6 +477,7 @@ const songsRef = db.ref('music_chart/songs');
 const historyRef = db.ref('music_chart/daily_history');
 const genreColorsRef = db.ref('music_chart/genre_colors');
 const moodColorsRef = db.ref('music_chart/mood_colors');
+const tierDefinitionsRef = db.ref('music_chart/tier_definitions');
 
 // --------------------------------------------------
 // アプリ変数
@@ -508,22 +516,73 @@ let trendEndDateUsed = null;
 let shuffledOrderIds = null;
 let top20OrderIds = null;
 
-function initTierSelects() {
-  const selectTier = document.getElementById('select-tier');
-  const inputTier = document.getElementById('input-tier');
-  if (!selectTier || !inputTier) return;
-  selectTier.innerHTML = '';
-  inputTier.innerHTML = '';
+// --------------------------------------------------
+// 🔥 Tier基準設定 同期 & UI
+// --------------------------------------------------
+tierDefinitionsRef.on('value', (snapshot) => {
+  const data = snapshot.val();
+  if (data && Array.isArray(data) && data.length > 0) {
+    TIER_DEFINITIONS = data.map(t => ({
+      ...t,
+      maxRank: (t.maxRank === "Infinity" || t.maxRank === Infinity || t.maxRank === null || t.maxRank === undefined) ? Infinity : Number(t.maxRank)
+    }));
+  }
+  sortSongs();
+  renderRankingUI();
+  updateTrackInfoDisplay();
+  renderTierSettingsUI();
+});
 
-  TIER_DEFINITIONS.forEach(t => {
-    const rankLabel = t.maxRank === Infinity ? "その他" : `${t.maxRank}位以下`;
-    const opt = `<option value="${t.code}">${t.code} (${t.name} - ${rankLabel})</option>`;
-    selectTier.innerHTML += opt;
-    inputTier.innerHTML += opt;
+function renderTierSettingsUI() {
+  const container = document.getElementById('tier-settings-container');
+  if (!container) return;
+
+  let html = '<table style="margin-top: 5px; width: 100%; border-collapse: collapse;"><thead><tr><th style="text-align: left; padding: 6px;">Tier</th><th style="text-align: left; padding: 6px;">名称</th><th style="padding: 6px;">適用順位（〜位以下）</th></tr></thead><tbody>';
+
+  TIER_DEFINITIONS.forEach((t, idx) => {
+    const isLast = (idx === TIER_DEFINITIONS.length - 1);
+    const val = t.maxRank === Infinity ? '' : t.maxRank;
+
+    html += `
+      <tr>
+        <td style="padding: 6px; font-weight: bold; border-bottom: 1px solid #333;">${t.code}</td>
+        <td style="padding: 6px; border-bottom: 1px solid #333;">${t.name}</td>
+        <td style="padding: 6px; text-align: center; border-bottom: 1px solid #333;">
+          ${isLast ? '<span style="color:#888;">その他 (全曲)</span>' : `<input type="number" id="tier-max-${idx}" value="${val}" min="1" style="width: 80px; text-align: center;"> 位まで`}
+        </td>
+      </tr>
+    `;
   });
-  inputTier.value = "A+";
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
 }
-initTierSelects();
+
+function saveTierSettings() {
+  const updated = TIER_DEFINITIONS.map((t, idx) => {
+    if (idx === TIER_DEFINITIONS.length - 1) {
+      return { ...t, maxRank: Infinity };
+    }
+    const input = document.getElementById(`tier-max-${idx}`);
+    const val = input ? parseInt(input.value) : t.maxRank;
+    return { ...t, maxRank: (isNaN(val) || val <= 0) ? t.maxRank : val };
+  });
+
+  tierDefinitionsRef.set(updated.map(t => ({
+    ...t,
+    maxRank: t.maxRank === Infinity ? "Infinity" : t.maxRank
+  })), (error) => {
+    if (error) {
+      showToast('保存に失敗しました');
+    } else {
+      showToast('Tier設定を保存しました');
+      sortSongs();
+      saveAllToFirebase();
+      renderRankingUI();
+      updateTrackInfoDisplay();
+    }
+  });
+}
 
 // --------------------------------------------------
 // 🔥 Firebaseリアルタイム同期
@@ -1471,20 +1530,6 @@ function importCSVData() {
 // --------------------------------------------------
 // UI表示 ＆ 操作
 // --------------------------------------------------
-function changeCurrentSongTier(newTier) {
-  if (currentPlaylist.length === 0) return;
-  const song = currentPlaylist[currentIndex];
-  const targetRank = getMinRankForTier(newTier);
-  const oldIndex = songs.findIndex(s => s.id === song.id);
-  const newIndex = Math.min(targetRank - 1, songs.length - 1);
-
-  if (oldIndex !== -1 && newIndex >= 0) {
-    songs.splice(oldIndex, 1);
-    songs.splice(newIndex, 0, song);
-    saveAllToFirebase();
-  }
-}
-
 function swapSongOrder(songId, direction, e) {
   if (e) e.stopPropagation();
   const idx = songs.findIndex(s => s.id === songId);
@@ -1559,7 +1604,6 @@ function updateTrackInfoDisplay() {
 
     const tierObj = TIER_DEFINITIONS.find(t => t.code === song.tier) || { name: song.tier };
     document.getElementById('display-tier').innerText = `${song.tier} (${tierObj.name})`;
-    document.getElementById('select-tier').value = song.tier;
     document.getElementById('input-direct-rank').placeholder = `${song.order + 1}位`;
   }
 }
@@ -1950,7 +1994,6 @@ function addNewSong() {
   const genreInput = document.getElementById('input-genre');
   const moodInput = document.getElementById('input-mood');
   const yearInput = document.getElementById('input-year');
-  const tierInput = document.getElementById('input-tier');
 
   if (!titleInput.value.trim() || !ytidInput) return showToast('入力してください');
 
@@ -1960,8 +2003,7 @@ function addNewSong() {
   const rawMood = moodInput ? moodInput.value.trim() : '';
   const parsedMoods = rawMood ? rawMood.split(',').map(m => m.trim()).filter(Boolean).slice(0, 3) : [];
 
-  const targetRank = getMinRankForTier(tierInput.value);
-  const insertIndex = Math.min(targetRank - 1, songs.length);
+  const insertIndex = songs.length;
 
   const newId = Date.now().toString();
   const newSong = {
@@ -2332,6 +2374,9 @@ function updateMoodTopList() {
   renderRankingUI();
   relocateCurrentSong();
 }
+</script>
+</body>
+</html>
 </script>
 </body>
 </html>
