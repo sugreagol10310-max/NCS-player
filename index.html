@@ -206,7 +206,7 @@
           <div id="edit-song-form" style="display:none; margin-top: 8px; padding: 8px; background: #1a1a1a; border-radius: 4px;">
             <div>曲名: <input type="text" id="edit-title-input" style="width: 60%;"></div>
             <div style="margin-top: 4px;">ジャンル: <input type="text" id="edit-genre-input" placeholder="例: Electronic" style="width: 60%;"></div>
-            <div style="margin-top: 4px;">ムード: <input type="text" id="edit-mood-input" placeholder="例: Chill, Happy (カンマ区切り最大3つ)" style="width: 60%;"></div>
+            <div style="margin-top: 4px;">ムード: <input type="text" id="edit-mood-input" placeholder="例: Chill, Happy (カンマ区切り)" style="width: 60%;"></div>
             <div style="margin-top: 6px;">
               <button onclick="saveSongEdit()">💾 保存</button>
               <button onclick="toggleEditSongForm()">キャンセル</button>
@@ -369,7 +369,7 @@
     <input type="text" id="input-title" placeholder="曲名">
     <input type="text" id="input-ytid" placeholder="YouTube ID または URL">
     <input type="text" id="input-genre" placeholder="ジャンル (空欄可)">
-    <input type="text" id="input-mood" placeholder="ムード (カンマ区切り最大3つ、空欄可)">
+    <input type="text" id="input-mood" placeholder="ムード (カンマ区切り、空欄可)">
     <input type="number" id="input-year" placeholder="リリース年 (例: 2024)" value="2024">
     <button onclick="addNewSong()">追加</button>
 
@@ -621,7 +621,8 @@ songsRef.on('value', (snapshot) => {
       } else if (s.mood) {
         songMoods = s.mood.split(',').map(m => m.trim()).filter(Boolean);
       }
-      songMoods = songMoods.slice(0, 3);
+      
+      // Moodの制限撤廃
 
       return {
         id: s.id,
@@ -1367,16 +1368,12 @@ function computeAndRenderRecommendations() {
 
   const renderGroup = (list, isPositive) => list.map(i => {
     const style = getGenreStyle(i.genre);
-    let moodsHtml = (i.moods && i.moods.length) ? i.moods.map(m => {
-      const ms = getMoodStyle(m);
-      return `<span class="rank-mood-tag" style="background-color:${ms.bg}; color:${ms.text};">${m}</span>`;
-    }).join(' ') : '';
+    // Mood表示を削除
     return `
       <li class="rank-item" onclick="selectSongById('${i.id}')">
         <img src="https://i.ytimg.com/vi/${i.youtubeId}/default.jpg" class="rank-thumb" loading="lazy" alt="">
         <span class="rank-tier-tag">${i.tier}</span>
         <span class="rank-genre-tag" style="background-color:${style.bg}; color:${style.text};">${i.genre}</span>
-        ${moodsHtml}
         <span class="rank-name">${i.title}</span>
         <span style="font-size:12px; color:${isPositive ? '#00ffcc' : '#ff8888'}; margin-right:8px; white-space:nowrap;">
           好き度${i.favRank}位 / 直近3日再生数${i.engRank}位 (${i.recentPlays}回, ${i.gap > 0 ? '+' : ''}${i.gap})
@@ -1637,7 +1634,7 @@ function saveSongEdit() {
 
   if (!newTitle) return showToast('曲名を入力してください');
 
-  const newMoods = rawMood ? rawMood.split(',').map(m => m.trim()).filter(Boolean).slice(0, 3) : [];
+  const newMoods = rawMood ? rawMood.split(',').map(m => m.trim()).filter(Boolean) : [];
 
   song.title = newTitle;
   song.genre = newGenre || 'ジャンル不明';
@@ -1856,7 +1853,7 @@ function renderRankingUI() {
     const gStyle = getGenreStyle(song.genre);
     
     let moodsHtml = '';
-    if (song.moods && song.moods.length > 0) {
+    if (isMoodTopMode && song.moods && song.moods.length > 0) {
       moodsHtml = song.moods.map(m => {
         const mStyle = getMoodStyle(m);
         return `<span class="rank-mood-tag" style="background-color: ${mStyle.bg}; color: ${mStyle.text};">${m}</span>`;
@@ -2001,7 +1998,7 @@ function addNewSong() {
   else if (ytidInput.includes('youtu.be/')) ytidInput = ytidInput.split('youtu.be/')[1].split('?')[0];
 
   const rawMood = moodInput ? moodInput.value.trim() : '';
-  const parsedMoods = rawMood ? rawMood.split(',').map(m => m.trim()).filter(Boolean).slice(0, 3) : [];
+  const parsedMoods = rawMood ? rawMood.split(',').map(m => m.trim()).filter(Boolean) : [];
 
   const insertIndex = songs.length;
 
@@ -2059,7 +2056,7 @@ function importData(event) {
           songs = importedSongs.map((s, idx) => ({
             ...s,
             tier: rankToTierCode(idx + 1),
-            moods: Array.isArray(s.moods) ? s.moods.slice(0, 3) : (s.mood ? s.mood.split(',').map(m=>m.trim()).filter(Boolean).slice(0,3) : []),
+            moods: Array.isArray(s.moods) ? s.moods : (s.mood ? s.mood.split(',').map(m=>m.trim()).filter(Boolean) : []),
             order: idx
           }));
           saveAllToFirebase();
