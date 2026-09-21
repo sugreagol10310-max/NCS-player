@@ -401,13 +401,29 @@ function showToast(message) {
 // --------------------------------------------------
 // ⚡ スタミナ管理機能
 // --------------------------------------------------
-let staminaSeconds = 15 * 60; // 最大15分 (900秒)
+let staminaSeconds = 30 * 60; // 最大30分 (1800秒)
 let lastStaminaCheckTime = Date.now();
+
+let holidays = {};
+fetch('https://holidays-jp.github.io/api/v1/date.json')
+  .then(res => res.json())
+  .then(data => {
+    holidays = data;
+  })
+  .catch(err => console.error("祝日データの取得に失敗しました", err));
 
 function isStaminaRestrictedTime() {
   const now = new Date();
   const day = now.getDay(); // 0: 日, 1: 月, ..., 5: 金, 6: 土
   if (day === 0 || day === 6) return false; // 土日は制限外
+  
+  // 祝日判定
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const dateStr = `${yyyy}-${mm}-${dd}`;
+  if (holidays[dateStr]) return false; // 祝日は制限外
+
   const hours = now.getHours();
   const minutes = now.getMinutes();
   const seconds = now.getSeconds();
@@ -437,7 +453,7 @@ function updateStamina() {
   const intervalMs = 30 * 60 * 1000; // 30分
   if (elapsedMs >= intervalMs) {
     const intervals = Math.floor(elapsedMs / intervalMs);
-    staminaSeconds = Math.min(15 * 60, staminaSeconds + intervals * 5 * 60);
+    staminaSeconds = Math.min(30 * 60, staminaSeconds + intervals * 5 * 60);
     lastStaminaCheckTime += intervals * intervalMs;
     saveStaminaState();
   }
@@ -618,6 +634,10 @@ function renderTierSettingsUI() {
 }
 
 function saveTierSettings() {
+  if (isStaminaRestrictedTime()) {
+    return showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）はTier設定の変更ができません');
+  }
+
   const updated = TIER_DEFINITIONS.map((t, idx) => {
     if (idx === TIER_DEFINITIONS.length - 1) {
       return { ...t, maxRank: Infinity };
@@ -1453,8 +1473,8 @@ function computeAndRenderRecommendations() {
 }
 
 function setMode(mode, e) {
-  if (mode === 'analytics' && isStaminaRestrictedTime()) {
-    showToast('スタミナ制限時間帯（平日0:00〜21:00）はアナリティクスを表示できません');
+  if (isStaminaRestrictedTime() && mode !== 'all') {
+    showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）は全曲リスト以外のタブを開けません');
     return;
   }
 
@@ -1591,7 +1611,7 @@ function importCSVData() {
 function swapSongOrder(songId, direction, e) {
   if (e) e.stopPropagation();
   if (isStaminaRestrictedTime()) {
-    return showToast('スタミナ制限時間帯（平日0:00〜21:00）は順位の編集ができません');
+    return showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）は順位の編集ができません');
   }
   const idx = songs.findIndex(s => s.id === songId);
   if (idx === -1) return;
@@ -1605,7 +1625,7 @@ function swapSongOrder(songId, direction, e) {
 
 function moveCurrentSongToRank() {
   if (isStaminaRestrictedTime()) {
-    return showToast('スタミナ制限時間帯（平日0:00〜21:00）は順位の編集ができません');
+    return showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）は順位の編集ができません');
   }
   if (currentPlaylist.length === 0) return;
   const targetInput = document.getElementById('input-direct-rank');
@@ -1629,7 +1649,7 @@ function moveCurrentSongToRank() {
 
 function moveCurrentSongStep(step) {
   if (isStaminaRestrictedTime()) {
-    return showToast('スタミナ制限時間帯（平日0:00〜21:00）は順位の編集ができません');
+    return showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）は順位の編集ができません');
   }
   if (currentPlaylist.length === 0) return;
   const song = currentPlaylist[currentIndex];
@@ -1680,7 +1700,7 @@ function updateTrackInfoDisplay() {
 // --------------------------------------------------
 function toggleEditSongForm() {
   if (isStaminaRestrictedTime()) {
-    return showToast('スタミナ制限時間帯（平日0:00〜21:00）はムード・ジャンルの編集ができません');
+    return showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）はムード・ジャンルの編集ができません');
   }
   const form = document.getElementById('edit-song-form');
   if (!form) return;
@@ -1699,7 +1719,7 @@ function toggleEditSongForm() {
 
 function saveSongEdit() {
   if (isStaminaRestrictedTime()) {
-    return showToast('スタミナ制限時間帯（平日0:00〜21:00）はムード・ジャンルの編集ができません');
+    return showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）はムード・ジャンルの編集ができません');
   }
   const song = currentPlaylist[currentIndex];
   if (!song) return;
@@ -1753,7 +1773,7 @@ function togglePlayPause() {
     player.pauseVideo();
   } else {
     if (isStaminaRestrictedTime() && staminaSeconds <= 0) {
-      showToast('スタミナがないため曲を再生できません（平日0:00〜21:00制限）');
+      showToast('スタミナがないため曲を再生できません（祝日を除く平日0:00〜21:00制限）');
       return;
     }
     player.playVideo();
@@ -1990,7 +2010,7 @@ function loadCurrentSong(shouldPlay = true) {
   if (bar) bar.value = 0;
 
   if (shouldPlay && isStaminaRestrictedTime() && staminaSeconds <= 0) {
-    showToast('スタミナがないため曲を再生できません（平日0:00〜21:00制限）');
+    showToast('スタミナがないため曲を再生できません（祝日を除く平日0:00〜21:00制限）');
     if (player && typeof player.cueVideoById === 'function') {
       player.cueVideoById(song.youtubeId);
     }
@@ -2082,6 +2102,10 @@ document.addEventListener('keydown', (e) => {
 });
 
 function addNewSong() {
+  if (isStaminaRestrictedTime()) {
+    return showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）は新規曲の追加ができません');
+  }
+
   const titleInput = document.getElementById('input-title');
   let ytidInput = document.getElementById('input-ytid').value.trim();
   const genreInput = document.getElementById('input-genre');
