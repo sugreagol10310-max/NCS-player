@@ -157,7 +157,7 @@
 <div id="toast"></div>
 
 <div class="container">
-  <h1>🎵 NCS Music Player & Ranking Chart <span id="sync-indicator"></span></h1>
+  <h1>🎵 NCS Music Player & Ranking Chart <span id="sync-indicator"></span><span id="stamina-display" style="margin-left: 15px; font-size: 16px; color: #00ffcc;"></span></h1>
 
   <div class="card">
     <button class="mode-btn active" onclick="setMode('all', event)">全曲リスト</button>
@@ -399,6 +399,65 @@ function showToast(message) {
 }
 
 // --------------------------------------------------
+// ⚡ スタミナ管理機能
+// --------------------------------------------------
+let staminaSeconds = 15 * 60; // 最大15分 (900秒)
+let lastStaminaCheckTime = Date.now();
+
+function isStaminaRestrictedTime() {
+  const now = new Date();
+  const day = now.getDay(); // 0: 日, 1: 月, ..., 5: 金, 6: 土
+  if (day === 0 || day === 6) return false; // 土日は制限外
+  const hours = now.getHours();
+  const minutes = now.getMinutes();
+  const seconds = now.getSeconds();
+  
+  // 平日 0:00:00 〜 21:00:00
+  if (hours < 21) return true;
+  if (hours === 21 && minutes === 0 && seconds === 0) return true;
+  return false;
+}
+
+function loadStaminaState() {
+  const savedSec = localStorage.getItem('ncs_stamina_sec');
+  const savedTime = localStorage.getItem('ncs_stamina_time');
+  if (savedSec !== null) staminaSeconds = parseFloat(savedSec);
+  if (savedTime !== null) lastStaminaCheckTime = parseInt(savedTime, 10);
+  updateStamina();
+}
+
+function saveStaminaState() {
+  localStorage.setItem('ncs_stamina_sec', staminaSeconds);
+  localStorage.setItem('ncs_stamina_time', lastStaminaCheckTime);
+}
+
+function updateStamina() {
+  const now = Date.now();
+  const elapsedMs = now - lastStaminaCheckTime;
+  const intervalMs = 30 * 60 * 1000; // 30分
+  if (elapsedMs >= intervalMs) {
+    const intervals = Math.floor(elapsedMs / intervalMs);
+    staminaSeconds = Math.min(15 * 60, staminaSeconds + intervals * 5 * 60);
+    lastStaminaCheckTime += intervals * intervalMs;
+    saveStaminaState();
+  }
+  renderStaminaUI();
+}
+
+function renderStaminaUI() {
+  const el = document.getElementById('stamina-display');
+  if (!el) return;
+  const mins = Math.floor(staminaSeconds / 60);
+  const secs = Math.floor(staminaSeconds % 60);
+  const timeStr = `${mins}分${secs < 10 ? '0' : ''}${secs}秒`;
+  const isRestricted = isStaminaRestrictedTime();
+  el.innerHTML = `⚡ スタミナ: ${timeStr} ${isRestricted ? '<span style="font-size:12px; color:#ffaa00;">(制限中)</span>' : '<span style="font-size:12px; color:#888;">(制限外)</span>'}`;
+}
+
+loadStaminaState();
+setInterval(updateStamina, 1000);
+
+// --------------------------------------------------
 // 🔥 ティア設定マスター定義 (順位基準版: 何位以下かを指定)
 // --------------------------------------------------
 let TIER_DEFINITIONS = [
@@ -621,8 +680,6 @@ songsRef.on('value', (snapshot) => {
       } else if (s.mood) {
         songMoods = s.mood.split(',').map(m => m.trim()).filter(Boolean);
       }
-      
-      // Moodの制限撤廃
 
       return {
         id: s.id,
@@ -1368,7 +1425,6 @@ function computeAndRenderRecommendations() {
 
   const renderGroup = (list, isPositive) => list.map(i => {
     const style = getGenreStyle(i.genre);
-    // Mood表示を削除
     return `
       <li class="rank-item" onclick="selectSongById('${i.id}')">
         <img src="https://i.ytimg.com/vi/${i.youtubeId}/default.jpg" class="rank-thumb" loading="lazy" alt="">
@@ -1397,6 +1453,11 @@ function computeAndRenderRecommendations() {
 }
 
 function setMode(mode, e) {
+  if (mode === 'analytics' && isStaminaRestrictedTime()) {
+    showToast('スタミナ制限時間帯（平日0:00〜21:00）はアナリティクスを表示できません');
+    return;
+  }
+
   document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
   e.target.classList.add('active');
   currentMode = mode;
@@ -1529,6 +1590,9 @@ function importCSVData() {
 // --------------------------------------------------
 function swapSongOrder(songId, direction, e) {
   if (e) e.stopPropagation();
+  if (isStaminaRestrictedTime()) {
+    return showToast('スタミナ制限時間帯（平日0:00〜21:00）は順位の編集ができません');
+  }
   const idx = songs.findIndex(s => s.id === songId);
   if (idx === -1) return;
   const newIdx = idx + direction;
@@ -1540,6 +1604,9 @@ function swapSongOrder(songId, direction, e) {
 }
 
 function moveCurrentSongToRank() {
+  if (isStaminaRestrictedTime()) {
+    return showToast('スタミナ制限時間帯（平日0:00〜21:00）は順位の編集ができません');
+  }
   if (currentPlaylist.length === 0) return;
   const targetInput = document.getElementById('input-direct-rank');
   let targetRank = parseInt(targetInput.value);
@@ -1561,6 +1628,9 @@ function moveCurrentSongToRank() {
 }
 
 function moveCurrentSongStep(step) {
+  if (isStaminaRestrictedTime()) {
+    return showToast('スタミナ制限時間帯（平日0:00〜21:00）は順位の編集ができません');
+  }
   if (currentPlaylist.length === 0) return;
   const song = currentPlaylist[currentIndex];
   const oldIndex = songs.findIndex(s => s.id === song.id);
@@ -1609,6 +1679,9 @@ function updateTrackInfoDisplay() {
 // ✎ 曲名・ジャンル・Moodの編集
 // --------------------------------------------------
 function toggleEditSongForm() {
+  if (isStaminaRestrictedTime()) {
+    return showToast('スタミナ制限時間帯（平日0:00〜21:00）はムード・ジャンルの編集ができません');
+  }
   const form = document.getElementById('edit-song-form');
   if (!form) return;
   const song = currentPlaylist[currentIndex];
@@ -1625,6 +1698,9 @@ function toggleEditSongForm() {
 }
 
 function saveSongEdit() {
+  if (isStaminaRestrictedTime()) {
+    return showToast('スタミナ制限時間帯（平日0:00〜21:00）はムード・ジャンルの編集ができません');
+  }
   const song = currentPlaylist[currentIndex];
   if (!song) return;
 
@@ -1676,6 +1752,10 @@ function togglePlayPause() {
   if (player.getPlayerState() === YT.PlayerState.PLAYING) {
     player.pauseVideo();
   } else {
+    if (isStaminaRestrictedTime() && staminaSeconds <= 0) {
+      showToast('スタミナがないため曲を再生できません（平日0:00〜21:00制限）');
+      return;
+    }
     player.playVideo();
   }
 }
@@ -1688,6 +1768,14 @@ function startListeningTimer() {
     if (!player || !player.getDuration || !activeListeningSong) return;
     const duration = player.getDuration();
     if (duration <= 0) return;
+
+    if (isStaminaRestrictedTime()) {
+      if (staminaSeconds > 0) {
+        staminaSeconds = Math.max(0, staminaSeconds - 1);
+        saveStaminaState();
+        renderStaminaUI();
+      }
+    }
 
     const song = activeListeningSong;
 
@@ -1900,6 +1988,14 @@ function loadCurrentSong(shouldPlay = true) {
 
   const bar = document.getElementById('seek-bar');
   if (bar) bar.value = 0;
+
+  if (shouldPlay && isStaminaRestrictedTime() && staminaSeconds <= 0) {
+    showToast('スタミナがないため曲を再生できません（平日0:00〜21:00制限）');
+    if (player && typeof player.cueVideoById === 'function') {
+      player.cueVideoById(song.youtubeId);
+    }
+    return;
+  }
 
   if (player && typeof player.loadVideoById === 'function') {
     try {
@@ -2371,9 +2467,6 @@ function updateMoodTopList() {
   renderRankingUI();
   relocateCurrentSong();
 }
-</script>
-</body>
-</html>
 </script>
 </body>
 </html>
