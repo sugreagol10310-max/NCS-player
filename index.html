@@ -88,7 +88,8 @@
       font-size: 12px;
       margin-right: 10px;
     }
-    .rank-name { flex-grow: 1; font-weight: bold; }
+    .rank-name { flex-grow: 1; font-weight: bold; white-space: nowrap; overflow: hidden; min-width: 0; }
+    .rank-main-info { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; overflow: hidden; }
     .rank-del-btn { background: #ff4444; color: #fff; padding: 2px 6px; font-size: 10px; }
     .rank-move-btn { background: #555; color: #fff; padding: 2px 7px; font-size: 12px; margin-right: 2px; }
     .rank-move-btn:hover { background: #777; }
@@ -1992,7 +1993,7 @@ function renderRankingUI() {
     const gStyle = getGenreStyle(song.genre);
     
     let moodsHtml = '';
-    if ((isMoodTopMode || currentMode === 'customShuffle' || currentMode === 'all') && song.moods && song.moods.length > 0) {
+    if (isMoodTopMode && song.moods && song.moods.length > 0) {
       moodsHtml = song.moods.map(m => {
         const mStyle = getMoodStyle(m);
         return `<span class="rank-mood-tag" style="background-color: ${mStyle.bg}; color: ${mStyle.text};">${m}</span>`;
@@ -2003,17 +2004,22 @@ function renderRankingUI() {
       <span class="rank-num">${index + 1}位</span>
       ${moveButtonsHtml}
       <img src="https://i.ytimg.com/vi/${song.youtubeId}/default.jpg" class="rank-thumb" loading="lazy" alt="">
+      <div class="rank-main-info">
       <span class="rank-tier-tag">${song.tier}</span>
       <span class="rank-genre-tag" style="background-color: ${gStyle.bg}; color: ${gStyle.text}; border: none;">${song.genre || 'ジャンル不明'}</span>
       ${moodsHtml}
       <span class="rank-name">${song.title}</span>
+      </div>
       ${metaStatsHtml}
       ${currentMode === 'customShuffle' 
         ? `<button class="rank-del-btn" onclick="removeFromCustomShuffle('${song.id}', event)" style="background: #ffaa00; font-size: 11px; padding: 2px 6px;">外す</button>` 
         : `<button class="rank-del-btn" onclick="deleteSong('${song.id}', event)">✕</button>`}
     `;
     listEl.appendChild(li);
+    setTimeout(fitRankingText,0);
   });
+
+  fitRankingText();
 
   if (listEl.children.length === 0) {
     const empty = document.createElement('li');
@@ -2026,6 +2032,19 @@ function renderRankingUI() {
 // --------------------------------------------------
 // 曲の読み込み・切り替え
 // --------------------------------------------------
+function fitRankingText() {
+  document.querySelectorAll('.rank-main-info').forEach(el => {
+    const name = el.querySelector('.rank-name');
+    if (!name) return;
+    name.style.fontSize = '16px';
+    let size = 16;
+    while (el.scrollWidth > el.clientWidth && size > 9) {
+      size -= 1;
+      name.style.fontSize = size + 'px';
+    }
+  });
+}
+
 function loadCurrentSong(shouldPlay = true) {
   if (!currentPlaylist || currentPlaylist.length === 0) return;
   if (currentIndex < 0 || currentIndex >= currentPlaylist.length) currentIndex = 0;
@@ -2668,3 +2687,4 @@ function removeFromCustomShuffle(id, e) {
 </script>
 </body>
 </html>
+
