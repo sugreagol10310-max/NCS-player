@@ -161,10 +161,9 @@
 
   <div class="card">
     <button class="mode-btn active" onclick="setMode('all', event)">全曲リスト</button>
-    <button class="mode-btn" onclick="setMode('top20', event)">Top 20</button>
     <button class="mode-btn" onclick="setMode('genreTop', event)">🎸 ジャンルTOP</button>
     <button class="mode-btn" onclick="setMode('moodTop', event)">🎭 ムードTOP</button>
-    <button class="mode-btn" onclick="setMode('bottom', event)">シャッフル再生</button>
+    <button class="mode-btn" onclick="setMode('customShuffle', event)">🔀 カスタムシャッフル</button>
     <button class="mode-btn" onclick="setMode('playCount', event)">再生数順</button>
     <button class="mode-btn" onclick="setMode('watchTime', event)">🕒 再生時間順</button>
     <button class="mode-btn" onclick="setMode('trending', event)">トレンド順</button>
@@ -335,6 +334,50 @@
         </select>
       </div>
     </div>
+  </div>
+
+  <!-- 🔀 カスタムシャッフル コンテナ -->
+  <div id="custom-shuffle-container" class="card" style="display: none; padding-bottom: 10px;">
+    <h2 style="margin-top: 0;">🔀 カスタムシャッフル再生</h2>
+    <div style="display: flex; gap: 15px; align-items: flex-start; flex-wrap: wrap;">
+      <div style="background: #2a2a2a; padding: 10px; border-radius: 4px; min-width: 200px;">
+        <label style="font-size:12px; color:#00ffcc; font-weight:bold;">好き度ランキング (全曲リスト)</label><br>
+        <input type="number" id="cs-fav-min" placeholder="1" style="width: 60px;"> 位 〜
+        <input type="number" id="cs-fav-max" placeholder="末尾" style="width: 60px;"> 位
+      </div>
+      <div style="background: #2a2a2a; padding: 10px; border-radius: 4px; min-width: 200px;">
+        <label style="font-size:12px; color:#00ffcc; font-weight:bold;">歴代視聴回数</label><br>
+        <input type="number" id="cs-play-min" placeholder="1" style="width: 60px;"> 位 〜
+        <input type="number" id="cs-play-max" placeholder="末尾" style="width: 60px;"> 位
+      </div>
+      <div style="background: #2a2a2a; padding: 10px; border-radius: 4px; min-width: 200px;">
+        <label style="font-size:12px; color:#00ffcc; font-weight:bold;">歴代視聴時間</label><br>
+        <input type="number" id="cs-time-min" placeholder="1" style="width: 60px;"> 位 〜
+        <input type="number" id="cs-time-max" placeholder="末尾" style="width: 60px;"> 位
+      </div>
+      <div style="background: #2a2a2a; padding: 10px; border-radius: 4px; min-width: 200px;">
+        <label style="font-size:12px; color:#00ffcc; font-weight:bold;">ジャンル</label><br>
+        <select id="cs-genre" style="width: 100%; padding: 5px; background: #121212; color: #fff; border: 1px solid #444; border-radius: 4px;">
+          <option value="">すべて</option>
+        </select>
+      </div>
+      <div style="background: #2a2a2a; padding: 10px; border-radius: 4px; min-width: 200px; flex-grow: 1;">
+        <label style="font-size:12px; color:#00ffcc; font-weight:bold;">ムード (複数選択可)</label><br>
+        <div id="cs-moods-container" style="max-height: 80px; overflow-y: auto; background: #121212; border: 1px solid #444; padding: 5px; border-radius: 4px;">
+        </div>
+      </div>
+    </div>
+    <div style="margin-top: 15px; text-align: right;">
+      <button onclick="generateCustomShuffle()" style="background-color: #ffaa00; font-size: 16px; padding: 10px 20px;">🔀 条件でシャッフル再生リストを生成</button>
+    </div>
+    
+    <h3 style="margin-top: 20px; border-top: 1px solid #444; padding-top: 15px;">➕ リストを手動調整（追加）</h3>
+    <div style="display: flex; gap: 5px; align-items: center;">
+      <select id="cs-manual-add-select" style="flex-grow: 1; padding: 8px; background: #222; color: #fff; border: 1px solid #444; border-radius: 4px;">
+      </select>
+      <button onclick="addManualToCustomShuffle()" style="padding: 8px 15px;">リストに追加</button>
+    </div>
+    <p style="font-size: 12px; color: #888;">※ リストから曲を外す場合は、右側のリストの「外す」ボタンを押してください。</p>
   </div>
 
   <div class="card">
@@ -588,9 +631,6 @@ let trendEndSnapshot = null;
 let trendStartDateUsed = null;
 let trendEndDateUsed = null;
 
-let shuffledOrderIds = null;
-let top20OrderIds = null;
-
 // --------------------------------------------------
 // 🔥 Tier基準設定 同期 & UI
 // --------------------------------------------------
@@ -748,7 +788,7 @@ songsRef.on('value', (snapshot) => {
     } else if (currentMode === 'recommend') {
       computeAndRenderRecommendations();
     } else {
-      updatePlaylistByMode(currentMode === 'bottom' || currentMode === 'top20');
+      updatePlaylistByMode(false);
       renderRankingUI();
     }
   }
@@ -1317,12 +1357,14 @@ function exportAnalyticsCSV() {
 function updatePlaylistByMode(forceReshuffle = false) {
   const analyticsContainer = document.getElementById('analytics-container');
   const recommendContainer = document.getElementById('recommend-container');
+  const customShuffleContainer = document.getElementById('custom-shuffle-container');
   const rankList = document.getElementById('rank-list');
   const searchBox = document.getElementById('rank-search');
 
   const isSpecialView = (currentMode === 'analytics' || currentMode === 'recommend');
   if (analyticsContainer) analyticsContainer.style.display = (currentMode === 'analytics') ? 'block' : 'none';
   if (recommendContainer) recommendContainer.style.display = (currentMode === 'recommend') ? 'block' : 'none';
+  if (customShuffleContainer) customShuffleContainer.style.display = (currentMode === 'customShuffle') ? 'block' : 'none';
   if (rankList) rankList.style.display = isSpecialView ? 'none' : 'block';
   if (searchBox) searchBox.style.display = isSpecialView ? 'none' : 'block';
 
@@ -1347,28 +1389,14 @@ function updatePlaylistByMode(forceReshuffle = false) {
     return;
   }
 
-  if (currentMode === 'top20') {
-    const top20Songs = songs.slice(0, 20);
-    const top20Ids = new Set(top20Songs.map(s => s.id));
-
-    if (!top20OrderIds || forceReshuffle) {
-      top20OrderIds = top20Songs.map(s => s.id).sort(() => Math.random() - 0.5);
-    } else {
-      top20OrderIds = top20OrderIds.filter(id => top20Ids.has(id));
-      top20Songs.forEach(s => { if (!top20OrderIds.includes(s.id)) top20OrderIds.push(s.id); });
+  if (currentMode === 'customShuffle') {
+    if (currentPlaylist.length > 0) {
+      if (forceReshuffle) {
+        generateCustomShuffle();
+      } else {
+        currentPlaylist = currentPlaylist.map(cs => songs.find(s => s.id === cs.id)).filter(Boolean);
+      }
     }
-    currentPlaylist = top20OrderIds.map(id => songs.find(s => s.id === id)).filter(Boolean);
-  } else if (currentMode === 'bottom') {
-    const eligible = songs.slice(Math.floor(songs.length / 2));
-    const eligibleIds = new Set(eligible.map(s => s.id));
-
-    if (!shuffledOrderIds || forceReshuffle) {
-      shuffledOrderIds = eligible.map(s => s.id).sort(() => Math.random() - 0.5);
-    } else {
-      shuffledOrderIds = shuffledOrderIds.filter(id => eligibleIds.has(id));
-      eligible.forEach(s => { if (!shuffledOrderIds.includes(s.id)) shuffledOrderIds.push(s.id); });
-    }
-    currentPlaylist = shuffledOrderIds.map(id => songs.find(s => s.id === id)).filter(Boolean);
   } else if (currentMode === 'playCount') {
     currentPlaylist = [...songs].sort((a, b) => b.playCount - a.playCount);
   } else if (currentMode === 'watchTime') {
@@ -1483,19 +1511,21 @@ function setMode(mode, e) {
   currentMode = mode;
 
   const reshuffleBtn = document.getElementById('reshuffle-btn');
-  if (reshuffleBtn) reshuffleBtn.style.display = (mode === 'bottom' || mode === 'top20' || mode === 'all') ? 'inline-block' : 'none';
+  if (reshuffleBtn) reshuffleBtn.style.display = (mode === 'customShuffle' || mode === 'all') ? 'inline-block' : 'none';
 
   const dateRangeContainer = document.getElementById('date-range-container');
   const analyticsContainer = document.getElementById('analytics-container');
   const recommendContainer = document.getElementById('recommend-container');
   const genreTopContainer  = document.getElementById('genre-top-container');
   const moodTopContainer   = document.getElementById('mood-top-container');
+  const customShuffleContainer = document.getElementById('custom-shuffle-container');
 
   if (dateRangeContainer) dateRangeContainer.style.display = (mode === 'trending') ? 'block' : 'none';
   if (analyticsContainer) analyticsContainer.style.display = (mode === 'analytics') ? 'block' : 'none';
   if (recommendContainer) recommendContainer.style.display = (mode === 'recommend') ? 'block' : 'none';
   if (genreTopContainer)  genreTopContainer.style.display  = (mode === 'genreTop')  ? 'block' : 'none';
   if (moodTopContainer)   moodTopContainer.style.display   = (mode === 'moodTop')   ? 'block' : 'none';
+  if (customShuffleContainer) customShuffleContainer.style.display = (mode === 'customShuffle') ? 'block' : 'none';
 
   const listEl = document.getElementById('rank-list');
   if (listEl) {
@@ -1509,8 +1539,11 @@ function setMode(mode, e) {
     } else if (mode === 'moodTop') {
       populateMoodSelect();
       updateMoodTopList();
+    } else if (mode === 'customShuffle') {
+      populateCustomShuffleOptions();
+      updatePlaylistByMode(false);
     } else {
-      updatePlaylistByMode(mode === 'bottom' || mode === 'top20');
+      updatePlaylistByMode(false);
     }
     
     if (mode === 'analytics') renderAnalyticsTable();
@@ -1895,16 +1928,14 @@ function renderRankingUI() {
   const currentSong = currentPlaylist[currentIndex];
 
   let lastTier = null;
-  const isFlatRankedMode = (currentMode === 'playCount' || currentMode === 'trending' || currentMode === 'watchTime');
+  const isFlatRankedMode = (currentMode === 'playCount' || currentMode === 'trending' || currentMode === 'watchTime' || currentMode === 'customShuffle');
   const isGenreTopMode = (currentMode === 'genreTop');
   const isMoodTopMode = (currentMode === 'moodTop');
   const genreSortType = isGenreTopMode ? document.getElementById('genre-sort-select')?.value : null;
   const moodSortType = isMoodTopMode ? document.getElementById('mood-sort-select')?.value : null;
 
   let targetList = currentPlaylist;
-  if (currentMode === 'top20') {
-    targetList = songs.slice(0, 20);
-  } else if (currentMode === 'all') {
+  if (currentMode === 'all') {
     targetList = songs;
   }
 
@@ -1961,7 +1992,7 @@ function renderRankingUI() {
     const gStyle = getGenreStyle(song.genre);
     
     let moodsHtml = '';
-    if (isMoodTopMode && song.moods && song.moods.length > 0) {
+    if ((isMoodTopMode || currentMode === 'customShuffle' || currentMode === 'all') && song.moods && song.moods.length > 0) {
       moodsHtml = song.moods.map(m => {
         const mStyle = getMoodStyle(m);
         return `<span class="rank-mood-tag" style="background-color: ${mStyle.bg}; color: ${mStyle.text};">${m}</span>`;
@@ -1977,7 +2008,9 @@ function renderRankingUI() {
       ${moodsHtml}
       <span class="rank-name">${song.title}</span>
       ${metaStatsHtml}
-      <button class="rank-del-btn" onclick="deleteSong('${song.id}', event)">✕</button>
+      ${currentMode === 'customShuffle' 
+        ? `<button class="rank-del-btn" onclick="removeFromCustomShuffle('${song.id}', event)" style="background: #ffaa00; font-size: 11px; padding: 2px 6px;">外す</button>` 
+        : `<button class="rank-del-btn" onclick="deleteSong('${song.id}', event)">✕</button>`}
     `;
     listEl.appendChild(li);
   });
@@ -2490,6 +2523,147 @@ function updateMoodTopList() {
   currentPlaylist = filtered;
   renderRankingUI();
   relocateCurrentSong();
+}
+
+// --------------------------------------------------
+// 🔀 カスタムシャッフル再生機能
+// --------------------------------------------------
+function populateCustomShuffleOptions() {
+  const genreSelect = document.getElementById('cs-genre');
+  if (genreSelect) {
+    const uniqueGenres = [...new Set(songs.map(s => s.genre).filter(g => g && g !== 'ジャンル不明'))].sort();
+    const currentVal = genreSelect.value;
+    genreSelect.innerHTML = '<option value="">すべて</option>' + uniqueGenres.map(g => `<option value="${g}">${g}</option>`).join('');
+    if (currentVal && uniqueGenres.includes(currentVal)) genreSelect.value = currentVal;
+  }
+  
+  const moodContainer = document.getElementById('cs-moods-container');
+  if (moodContainer) {
+    const allMoods = [];
+    songs.forEach(s => {
+      if (s.moods && Array.isArray(s.moods)) {
+        s.moods.forEach(m => { if (m) allMoods.push(m); });
+      }
+    });
+    const uniqueMoods = [...new Set(allMoods)].sort();
+    const checkedMoods = Array.from(moodContainer.querySelectorAll('input:checked')).map(cb => cb.value);
+    
+    moodContainer.innerHTML = uniqueMoods.map(m => `
+      <label style="display: inline-block; margin-right: 10px; font-size: 12px; cursor: pointer;">
+        <input type="checkbox" value="${m}" ${checkedMoods.includes(m) ? 'checked' : ''}> ${m}
+      </label>
+    `).join('');
+  }
+
+  const manualAddSelect = document.getElementById('cs-manual-add-select');
+  if (manualAddSelect) {
+    const sorted = [...songs].sort((a, b) => a.title.localeCompare(b.title, 'ja'));
+    manualAddSelect.innerHTML = sorted.map(s => `<option value="${s.id}">${s.title} (${s.genre})</option>`).join('');
+  }
+}
+
+function generateCustomShuffle() {
+  let favMin = parseInt(document.getElementById('cs-fav-min').value);
+  let favMax = parseInt(document.getElementById('cs-fav-max').value);
+  let playMin = parseInt(document.getElementById('cs-play-min').value);
+  let playMax = parseInt(document.getElementById('cs-play-max').value);
+  let timeMin = parseInt(document.getElementById('cs-time-min').value);
+  let timeMax = parseInt(document.getElementById('cs-time-max').value);
+
+  favMin = isNaN(favMin) ? 1 : favMin;
+  favMax = isNaN(favMax) ? songs.length : favMax;
+  playMin = isNaN(playMin) ? 1 : playMin;
+  playMax = isNaN(playMax) ? songs.length : playMax;
+  timeMin = isNaN(timeMin) ? 1 : timeMin;
+  timeMax = isNaN(timeMax) ? songs.length : timeMax;
+
+  const genre = document.getElementById('cs-genre').value;
+  
+  const moodContainer = document.getElementById('cs-moods-container');
+  const checkedMoods = Array.from(moodContainer.querySelectorAll('input:checked')).map(cb => cb.value);
+
+  const playCountSortedIds = [...songs].sort((a, b) => (b.playCount || 0) - (a.playCount || 0)).map(s => s.id);
+  const watchTimeSortedIds = [...songs].sort((a, b) => (b.totalWatchTime || 0) - (a.totalWatchTime || 0)).map(s => s.id);
+
+  let filtered = songs.filter(song => {
+    const favRank = song.order + 1;
+    if (favRank < favMin || favRank > favMax) return false;
+
+    const playRank = playCountSortedIds.indexOf(song.id) + 1;
+    if (playRank < playMin || playRank > playMax) return false;
+
+    const timeRank = watchTimeSortedIds.indexOf(song.id) + 1;
+    if (timeRank < timeMin || timeRank > timeMax) return false;
+
+    if (genre && song.genre !== genre) return false;
+
+    if (checkedMoods.length > 0) {
+      if (!song.moods || !Array.isArray(song.moods)) return false;
+      const hasMood = checkedMoods.some(m => song.moods.includes(m));
+      if (!hasMood) return false;
+    }
+
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    showToast('条件に一致する曲がありませんでした。');
+    return;
+  }
+
+  filtered.sort(() => Math.random() - 0.5);
+  currentPlaylist = filtered;
+  
+  currentIndex = 0;
+  loadCurrentSong(true);
+  renderRankingUI();
+  showToast(`${filtered.length}曲でシャッフル再生リストを生成しました。`);
+}
+
+function addManualToCustomShuffle() {
+  if (currentMode !== 'customShuffle') {
+    showToast('カスタムシャッフルモードでのみ使用可能です。');
+    return;
+  }
+  const select = document.getElementById('cs-manual-add-select');
+  if (!select) return;
+  const songId = select.value;
+  const song = songs.find(s => s.id === songId);
+  if (!song) return;
+
+  if (currentPlaylist.some(s => s.id === songId)) {
+    showToast('既にリストに存在します。');
+    return;
+  }
+
+  const insertIndex = Math.floor(Math.random() * (currentPlaylist.length + 1));
+  currentPlaylist.splice(insertIndex, 0, song);
+  
+  relocateCurrentSong();
+  renderRankingUI();
+  showToast(`${song.title} をリストに追加しました。`);
+}
+
+function removeFromCustomShuffle(id, e) {
+  e.stopPropagation();
+  if (currentPlaylist.length <= 1) {
+    showToast('リストが空になるため除外できません。');
+    return;
+  }
+  const idx = currentPlaylist.findIndex(s => s.id === id);
+  if (idx !== -1) {
+    const isCurrent = (currentSongId === id);
+    currentPlaylist.splice(idx, 1);
+    
+    if (isCurrent) {
+      if (currentIndex >= currentPlaylist.length) currentIndex = 0;
+      loadCurrentSong(true);
+    } else {
+      relocateCurrentSong();
+    }
+    renderRankingUI();
+    showToast('リストから除外しました。');
+  }
 }
 </script>
 </body>
