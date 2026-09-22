@@ -110,6 +110,15 @@
       margin-right: 4px;
       display: inline-block;
     }
+    .rank-generation-tag {
+      background: #402330;
+      color: #ff7fbf;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 12px;
+      margin-right: 6px;
+      display: inline-block;
+    }
     .rank-thumb {
       width: 48px;
       height: 36px;
@@ -164,6 +173,7 @@
     <button class="mode-btn active" onclick="setMode('all', event)">全曲リスト</button>
     <button class="mode-btn" onclick="setMode('genreTop', event)">🎸 ジャンルTOP</button>
     <button class="mode-btn" onclick="setMode('moodTop', event)">🎭 ムードTOP</button>
+    <button class="mode-btn" onclick="setMode('generationTop', event)">🧬 世代別</button>
     <button class="mode-btn" onclick="setMode('customShuffle', event)">🔀 カスタムシャッフル</button>
     <button class="mode-btn" onclick="setMode('playCount', event)">再生数順</button>
     <button class="mode-btn" onclick="setMode('watchTime', event)">🕒 再生時間順</button>
@@ -194,6 +204,7 @@
               </div>
               <div>ジャンル: <span id="display-genre" class="rank-genre-tag">-</span></div>
               <div style="margin-top: 2px;">ムード: <span id="display-mood">-</span></div>
+              <div style="margin-top: 2px;">世代: <span id="display-generation" class="rank-generation-tag">-</span></div>
               <div style="margin-top: 4px;">
                 再生数: <span id="display-plays">0</span>回 | 
                 総再生時間: <span id="display-total-time">0分</span> | 
@@ -207,6 +218,7 @@
             <div>曲名: <input type="text" id="edit-title-input" style="width: 60%;"></div>
             <div style="margin-top: 4px;">ジャンル: <input type="text" id="edit-genre-input" placeholder="例: Electronic" style="width: 60%;"></div>
             <div style="margin-top: 4px;">ムード: <input type="text" id="edit-mood-input" placeholder="例: Chill, Happy (カンマ区切り)" style="width: 60%;"></div>
+            <div style="margin-top: 4px;">世代: <input type="number" id="edit-generation-input" placeholder="例: 1 (数字のみ)" style="width: 60%;"></div>
             <div style="margin-top: 6px;">
               <button onclick="saveSongEdit()">💾 保存</button>
               <button onclick="toggleEditSongForm()">キャンセル</button>
@@ -337,6 +349,34 @@
     </div>
   </div>
 
+  <!-- 🧬 世代別 コンテナ -->
+  <div id="generation-top-container" class="card" style="display: none; padding-bottom: 10px;">
+    <h2 style="margin-top: 0;">🧬 世代別</h2>
+    <div style="display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; background: #2a2a2a; padding: 10px; border-radius: 4px; margin-bottom: 10px;">
+      <div style="margin-bottom: 10px; width: 100%;">
+        <label><input type="radio" name="gen-extract-mode" value="single" checked onchange="updateGenerationTopList()"> 単一世代抽出</label>
+        <label style="margin-left: 15px;"><input type="radio" name="gen-extract-mode" value="allTop" onchange="updateGenerationTopList()"> 全世代TOP抽出</label>
+      </div>
+      <div id="gen-single-settings">
+        <label style="font-size:12px; color:#aaa;">世代</label><br>
+        <select id="generation-select" style="padding: 5px; background: #222; color: #fff; border: 1px solid #444; border-radius: 4px;" onchange="updateGenerationTopList()">
+        </select>
+      </div>
+      <div id="gen-all-top-settings" style="display: none;">
+        <label style="font-size:12px; color:#aaa;">各世代のTOP何位まで？</label><br>
+        <input type="number" id="generation-top-n" value="3" min="1" style="width: 60px; padding: 5px;" oninput="updateGenerationTopList()">
+      </div>
+      <div>
+        <label style="font-size:12px; color:#aaa;">並び順 (抽出基準 兼 表示順)</label><br>
+        <select id="generation-sort-select" style="padding: 5px; background: #222; color: #fff; border: 1px solid #444; border-radius: 4px;" onchange="updateGenerationTopList()">
+          <option value="favorite">好き度順</option>
+          <option value="playCount">歴代視聴回数順</option>
+          <option value="watchTime">歴代視聴時間順</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
   <!-- 🔀 カスタムシャッフル コンテナ -->
   <div id="custom-shuffle-container" class="card" style="display: none; padding-bottom: 10px;">
     <h2 style="margin-top: 0;">🔀 カスタムシャッフル再生</h2>
@@ -365,6 +405,11 @@
       <div style="background: #2a2a2a; padding: 10px; border-radius: 4px; min-width: 200px; flex-grow: 1;">
         <label style="font-size:12px; color:#00ffcc; font-weight:bold;">ムード (複数選択可)</label><br>
         <div id="cs-moods-container" style="max-height: 80px; overflow-y: auto; background: #121212; border: 1px solid #444; padding: 5px; border-radius: 4px;">
+        </div>
+      </div>
+      <div style="background: #2a2a2a; padding: 10px; border-radius: 4px; min-width: 200px; flex-grow: 1;">
+        <label style="font-size:12px; color:#00ffcc; font-weight:bold;">世代 (複数選択可)</label><br>
+        <div id="cs-generations-container" style="max-height: 80px; overflow-y: auto; background: #121212; border: 1px solid #444; padding: 5px; border-radius: 4px;">
         </div>
       </div>
     </div>
@@ -414,6 +459,7 @@
     <input type="text" id="input-ytid" placeholder="YouTube ID または URL">
     <input type="text" id="input-genre" placeholder="ジャンル (空欄可)">
     <input type="text" id="input-mood" placeholder="ムード (カンマ区切り、空欄可)">
+    <input type="number" id="input-generation" placeholder="世代 (数字、空欄可)">
     <input type="number" id="input-year" placeholder="リリース年 (例: 2024)" value="2024">
     <button onclick="addNewSong()">追加</button>
 
@@ -753,6 +799,7 @@ songsRef.on('value', (snapshot) => {
         tier: rankToTierCode(idx + 1),
         genre: s.genre || 'ジャンル不明',
         moods: songMoods,
+        generation: s.generation !== undefined && s.generation !== null ? parseInt(s.generation) : null,
         order: s.order !== undefined ? s.order : idx
       };
     });
@@ -786,6 +833,8 @@ songsRef.on('value', (snapshot) => {
       updateGenreTopList();
     } else if (currentMode === 'moodTop') {
       updateMoodTopList();
+    } else if (currentMode === 'generationTop') {
+      updateGenerationTopList();
     } else if (currentMode === 'recommend') {
       computeAndRenderRecommendations();
     } else {
@@ -870,6 +919,7 @@ function saveDailySnapshot(dateStr) {
       tier: song.tier,
       genre: song.genre || 'ジャンル不明',
       moods: song.moods || [],
+      generation: song.generation !== undefined ? song.generation : null,
       order: song.order,
       rank: idx + 1
     };
@@ -1390,6 +1440,11 @@ function updatePlaylistByMode(forceReshuffle = false) {
     return;
   }
 
+  if (currentMode === 'generationTop') {
+    updateGenerationTopList();
+    return;
+  }
+
   if (currentMode === 'customShuffle') {
     if (currentPlaylist.length > 0) {
       if (forceReshuffle) {
@@ -1519,6 +1574,7 @@ function setMode(mode, e) {
   const recommendContainer = document.getElementById('recommend-container');
   const genreTopContainer  = document.getElementById('genre-top-container');
   const moodTopContainer   = document.getElementById('mood-top-container');
+  const generationTopContainer = document.getElementById('generation-top-container');
   const customShuffleContainer = document.getElementById('custom-shuffle-container');
 
   if (dateRangeContainer) dateRangeContainer.style.display = (mode === 'trending') ? 'block' : 'none';
@@ -1526,6 +1582,7 @@ function setMode(mode, e) {
   if (recommendContainer) recommendContainer.style.display = (mode === 'recommend') ? 'block' : 'none';
   if (genreTopContainer)  genreTopContainer.style.display  = (mode === 'genreTop')  ? 'block' : 'none';
   if (moodTopContainer)   moodTopContainer.style.display   = (mode === 'moodTop')   ? 'block' : 'none';
+  if (generationTopContainer) generationTopContainer.style.display = (mode === 'generationTop') ? 'block' : 'none';
   if (customShuffleContainer) customShuffleContainer.style.display = (mode === 'customShuffle') ? 'block' : 'none';
 
   const listEl = document.getElementById('rank-list');
@@ -1540,6 +1597,9 @@ function setMode(mode, e) {
     } else if (mode === 'moodTop') {
       populateMoodSelect();
       updateMoodTopList();
+    } else if (mode === 'generationTop') {
+      populateGenerationSelect();
+      updateGenerationTopList();
     } else if (mode === 'customShuffle') {
       populateCustomShuffleOptions();
       updatePlaylistByMode(false);
@@ -1717,6 +1777,8 @@ function updateTrackInfoDisplay() {
       moodSpan.innerText = '-';
     }
 
+    document.getElementById('display-generation').innerText = (song.generation !== null && song.generation !== undefined && !isNaN(song.generation)) ? `第${song.generation}世代` : '-';
+
     document.getElementById('display-thumb').src = `https://i.ytimg.com/vi/${song.youtubeId}/mqdefault.jpg`;
     document.getElementById('display-plays').innerText = song.playCount;
     document.getElementById('display-total-time').innerText = `${Math.round(song.totalWatchTime / 60)}分`;
@@ -1730,11 +1792,11 @@ function updateTrackInfoDisplay() {
 }
 
 // --------------------------------------------------
-// ✎ 曲名・ジャンル・Moodの編集
+// ✎ 曲名・ジャンル・Mood・世代の編集
 // --------------------------------------------------
 function toggleEditSongForm() {
   if (isStaminaRestrictedTime()) {
-    return showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）はムード・ジャンルの編集ができません');
+    return showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）はムード・ジャンル等の編集ができません');
   }
   const form = document.getElementById('edit-song-form');
   if (!form) return;
@@ -1745,6 +1807,7 @@ function toggleEditSongForm() {
     document.getElementById('edit-title-input').value = song.title;
     document.getElementById('edit-genre-input').value = (song.genre && song.genre !== 'ジャンル不明') ? song.genre : '';
     document.getElementById('edit-mood-input').value = (song.moods && song.moods.length) ? song.moods.join(', ') : '';
+    document.getElementById('edit-generation-input').value = (song.generation !== null && song.generation !== undefined && !isNaN(song.generation)) ? song.generation : '';
     form.style.display = 'block';
   } else {
     form.style.display = 'none';
@@ -1753,7 +1816,7 @@ function toggleEditSongForm() {
 
 function saveSongEdit() {
   if (isStaminaRestrictedTime()) {
-    return showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）はムード・ジャンルの編集ができません');
+    return showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）はムード・ジャンル等の編集ができません');
   }
   const song = currentPlaylist[currentIndex];
   if (!song) return;
@@ -1761,19 +1824,23 @@ function saveSongEdit() {
   const newTitle = document.getElementById('edit-title-input').value.trim();
   const newGenre = document.getElementById('edit-genre-input').value.trim();
   const rawMood = document.getElementById('edit-mood-input').value.trim();
+  const rawGen = document.getElementById('edit-generation-input').value.trim();
 
   if (!newTitle) return showToast('曲名を入力してください');
 
   const newMoods = rawMood ? rawMood.split(',').map(m => m.trim()).filter(Boolean) : [];
+  const newGen = rawGen ? parseInt(rawGen) : null;
 
   song.title = newTitle;
   song.genre = newGenre || 'ジャンル不明';
   song.moods = newMoods;
+  song.generation = newGen;
 
   db.ref(`music_chart/songs/${song.id}`).update({ 
     title: song.title, 
     genre: song.genre,
-    moods: song.moods
+    moods: song.moods,
+    generation: song.generation
   });
 
   document.getElementById('edit-song-form').style.display = 'none';
@@ -1914,7 +1981,7 @@ function startSeekBarUpdater() {
 }
 
 // --------------------------------------------------
-// ランキング表示（全モード・ジャンルTOP・ムードTOP対応）
+// ランキング表示（全モード・ジャンルTOP・ムードTOP・世代別対応）
 // --------------------------------------------------
 function renderRankingUI() {
   if (currentMode === 'analytics' || currentMode === 'recommend') return;
@@ -1929,7 +1996,7 @@ function renderRankingUI() {
   const currentSong = currentPlaylist[currentIndex];
 
   let lastTier = null;
-  const isFlatRankedMode = (currentMode === 'playCount' || currentMode === 'trending' || currentMode === 'watchTime' || currentMode === 'customShuffle');
+  const isFlatRankedMode = (currentMode === 'playCount' || currentMode === 'trending' || currentMode === 'watchTime' || currentMode === 'customShuffle' || currentMode === 'generationTop');
   const isGenreTopMode = (currentMode === 'genreTop');
   const isMoodTopMode = (currentMode === 'moodTop');
   const genreSortType = isGenreTopMode ? document.getElementById('genre-sort-select')?.value : null;
@@ -1972,9 +2039,9 @@ function renderRankingUI() {
     };
 
     let metaStatsHtml = '';
-    if (currentMode === 'playCount') {
+    if (currentMode === 'playCount' || (currentMode === 'generationTop' && document.getElementById('generation-sort-select')?.value === 'playCount')) {
       metaStatsHtml = `<span class="rank-playcount">👀 ${song.playCount}回</span>`;
-    } else if (currentMode === 'watchTime') {
+    } else if (currentMode === 'watchTime' || (currentMode === 'generationTop' && document.getElementById('generation-sort-select')?.value === 'watchTime')) {
       metaStatsHtml = `<span class="rank-playcount">⏱ ${Math.round(song.totalWatchTime / 60)}分</span>`;
     } else if (currentMode === 'trending') {
       const startPlays = trendStartSnapshot ? (trendStartSnapshot[song.id]?.playCount || 0) : 0;
@@ -2008,6 +2075,7 @@ function renderRankingUI() {
       <span class="rank-tier-tag">${song.tier}</span>
       <span class="rank-genre-tag" style="background-color: ${gStyle.bg}; color: ${gStyle.text}; border: none;">${song.genre || 'ジャンル不明'}</span>
       ${moodsHtml}
+      ${(song.generation !== null && song.generation !== undefined && !isNaN(song.generation)) ? `<span class="rank-generation-tag">第${song.generation}世代</span>` : ''}
       <span class="rank-name">${song.title}</span>
       </div>
       ${metaStatsHtml}
@@ -2162,6 +2230,7 @@ function addNewSong() {
   let ytidInput = document.getElementById('input-ytid').value.trim();
   const genreInput = document.getElementById('input-genre');
   const moodInput = document.getElementById('input-mood');
+  const genInput = document.getElementById('input-generation');
   const yearInput = document.getElementById('input-year');
 
   if (!titleInput.value.trim() || !ytidInput) return showToast('入力してください');
@@ -2171,6 +2240,9 @@ function addNewSong() {
 
   const rawMood = moodInput ? moodInput.value.trim() : '';
   const parsedMoods = rawMood ? rawMood.split(',').map(m => m.trim()).filter(Boolean) : [];
+  
+  const rawGen = genInput ? genInput.value.trim() : '';
+  const parsedGen = rawGen ? parseInt(rawGen) : null;
 
   const insertIndex = songs.length;
 
@@ -2181,6 +2253,7 @@ function addNewSong() {
     title: titleInput.value.trim(),
     genre: (genreInput && genreInput.value.trim()) || 'ジャンル不明',
     moods: parsedMoods,
+    generation: parsedGen,
     year: parseInt(yearInput.value) || 2024,
     tier: rankToTierCode(insertIndex + 1),
     playCount: 0,
@@ -2196,6 +2269,7 @@ function addNewSong() {
   document.getElementById('input-ytid').value = '';
   if (genreInput) genreInput.value = '';
   if (moodInput) moodInput.value = '';
+  if (genInput) genInput.value = '';
   showToast('曲を追加しました');
 }
 
@@ -2229,6 +2303,7 @@ function importData(event) {
             ...s,
             tier: rankToTierCode(idx + 1),
             moods: Array.isArray(s.moods) ? s.moods : (s.mood ? s.mood.split(',').map(m=>m.trim()).filter(Boolean) : []),
+            generation: s.generation !== undefined && s.generation !== null ? parseInt(s.generation) : null,
             order: idx
           }));
           saveAllToFirebase();
@@ -2545,19 +2620,97 @@ function updateMoodTopList() {
 }
 
 // --------------------------------------------------
-// 🔀 カスタムシャッフル再生機能
+// 🧬 世代別機能
+// --------------------------------------------------
+function populateGenerationSelect() {
+  const select = document.getElementById('generation-select');
+  if (!select) return;
+
+  const currentVal = select.value;
+  const uniqueGenerations = [...new Set(songs.map(s => s.generation).filter(g => g !== undefined && g !== null && g !== ''))].sort((a, b) => a - b);
+  
+  select.innerHTML = uniqueGenerations.map(g => `<option value="${g}">第${g}世代</option>`).join('');
+
+  if (currentVal && uniqueGenerations.includes(parseInt(currentVal))) {
+    select.value = currentVal;
+  } else if (uniqueGenerations.length > 0) {
+    select.value = uniqueGenerations[0];
+  }
+}
+
+function updateGenerationTopList() {
+  if (currentMode !== 'generationTop') return;
+
+  const extractMode = document.querySelector('input[name="gen-extract-mode"]:checked')?.value || 'single';
+  const sortType = document.getElementById('generation-sort-select')?.value || 'favorite';
+  
+  const singleSettings = document.getElementById('gen-single-settings');
+  const allTopSettings = document.getElementById('gen-all-top-settings');
+  if (extractMode === 'single') {
+    singleSettings.style.display = 'block';
+    allTopSettings.style.display = 'none';
+  } else {
+    singleSettings.style.display = 'none';
+    allTopSettings.style.display = 'block';
+  }
+
+  let filtered = [];
+
+  if (extractMode === 'single') {
+    const genVal = document.getElementById('generation-select')?.value;
+    if (!genVal) {
+      currentPlaylist = [];
+      renderRankingUI();
+      relocateCurrentSong();
+      return;
+    }
+    const targetGen = parseInt(genVal);
+    filtered = songs.filter(s => s.generation === targetGen);
+  } else {
+    const topN = parseInt(document.getElementById('generation-top-n')?.value) || 3;
+    const uniqueGenerations = [...new Set(songs.map(s => s.generation).filter(g => g !== undefined && g !== null && g !== ''))];
+    
+    uniqueGenerations.forEach(gen => {
+      let genSongs = songs.filter(s => s.generation === gen);
+      if (sortType === 'favorite') {
+        genSongs.sort((a, b) => a.order - b.order);
+      } else if (sortType === 'playCount') {
+        genSongs.sort((a, b) => (b.playCount || 0) - (a.playCount || 0));
+      } else if (sortType === 'watchTime') {
+        genSongs.sort((a, b) => (b.totalWatchTime || 0) - (a.totalWatchTime || 0));
+      }
+      filtered.push(...genSongs.slice(0, topN));
+    });
+    filtered = [...new Set(filtered)];
+  }
+
+  if (sortType === 'favorite') {
+    filtered.sort((a, b) => a.order - b.order);
+  } else if (sortType === 'playCount') {
+    filtered.sort((a, b) => (b.playCount || 0) - (a.playCount || 0));
+  } else if (sortType === 'watchTime') {
+    filtered.sort((a, b) => (b.totalWatchTime || 0) - (a.totalWatchTime || 0));
+  }
+
+  currentPlaylist = filtered;
+  renderRankingUI();
+  relocateCurrentSong();
+}
+
+// --------------------------------------------------
+// 🔀 カスタムシャッフル関連機能（補完）
 // --------------------------------------------------
 function populateCustomShuffleOptions() {
-  const genreSelect = document.getElementById('cs-genre');
-  if (genreSelect) {
+  const csGenre = document.getElementById('cs-genre');
+  if (csGenre) {
+    const currentGenVal = csGenre.value;
     const uniqueGenres = [...new Set(songs.map(s => s.genre).filter(g => g && g !== 'ジャンル不明'))].sort();
-    const currentVal = genreSelect.value;
-    genreSelect.innerHTML = '<option value="">すべて</option>' + uniqueGenres.map(g => `<option value="${g}">${g}</option>`).join('');
-    if (currentVal && uniqueGenres.includes(currentVal)) genreSelect.value = currentVal;
+    csGenre.innerHTML = '<option value="">すべて</option>' + uniqueGenres.map(g => `<option value="${g}">${g}</option>`).join('');
+    if (uniqueGenres.includes(currentGenVal)) csGenre.value = currentGenVal;
   }
-  
-  const moodContainer = document.getElementById('cs-moods-container');
-  if (moodContainer) {
+
+  const csMoods = document.getElementById('cs-moods-container');
+  if (csMoods) {
     const allMoods = [];
     songs.forEach(s => {
       if (s.moods && Array.isArray(s.moods)) {
@@ -2565,126 +2718,115 @@ function populateCustomShuffleOptions() {
       }
     });
     const uniqueMoods = [...new Set(allMoods)].sort();
-    const checkedMoods = Array.from(moodContainer.querySelectorAll('input:checked')).map(cb => cb.value);
-    
-    moodContainer.innerHTML = uniqueMoods.map(m => `
-      <label style="display: inline-block; margin-right: 10px; font-size: 12px; cursor: pointer;">
+    const checkedMoods = Array.from(csMoods.querySelectorAll('input:checked')).map(el => el.value);
+    csMoods.innerHTML = uniqueMoods.map(m => `
+      <label style="display:inline-block; margin-right:10px;">
         <input type="checkbox" value="${m}" ${checkedMoods.includes(m) ? 'checked' : ''}> ${m}
+      </label>
+    `).join('');
+  }
+
+  const csGenerations = document.getElementById('cs-generations-container');
+  if (csGenerations) {
+    const uniqueGens = [...new Set(songs.map(s => s.generation).filter(g => g !== undefined && g !== null && g !== ''))].sort((a, b) => a - b);
+    const checkedGens = Array.from(csGenerations.querySelectorAll('input:checked')).map(el => el.value);
+    csGenerations.innerHTML = uniqueGens.map(g => `
+      <label style="display:inline-block; margin-right:10px;">
+        <input type="checkbox" value="${g}" ${checkedGens.includes(g.toString()) ? 'checked' : ''}> 第${g}世代
       </label>
     `).join('');
   }
 
   const manualAddSelect = document.getElementById('cs-manual-add-select');
   if (manualAddSelect) {
-    const sorted = [...songs].sort((a, b) => a.title.localeCompare(b.title, 'ja'));
-    manualAddSelect.innerHTML = sorted.map(s => `<option value="${s.id}">${s.title} (${s.genre})</option>`).join('');
+    manualAddSelect.innerHTML = songs.map(s => `<option value="${s.id}">${s.title}</option>`).join('');
   }
 }
 
 function generateCustomShuffle() {
-  let favMin = parseInt(document.getElementById('cs-fav-min').value);
-  let favMax = parseInt(document.getElementById('cs-fav-max').value);
-  let playMin = parseInt(document.getElementById('cs-play-min').value);
-  let playMax = parseInt(document.getElementById('cs-play-max').value);
-  let timeMin = parseInt(document.getElementById('cs-time-min').value);
-  let timeMax = parseInt(document.getElementById('cs-time-max').value);
+  let filtered = [...songs];
 
-  favMin = isNaN(favMin) ? 1 : favMin;
-  favMax = isNaN(favMax) ? songs.length : favMax;
-  playMin = isNaN(playMin) ? 1 : playMin;
-  playMax = isNaN(playMax) ? songs.length : playMax;
-  timeMin = isNaN(timeMin) ? 1 : timeMin;
-  timeMax = isNaN(timeMax) ? songs.length : timeMax;
+  const favMin = parseInt(document.getElementById('cs-fav-min').value);
+  const favMax = parseInt(document.getElementById('cs-fav-max').value);
+  if (!isNaN(favMin)) filtered = filtered.filter(s => (s.order + 1) >= favMin);
+  if (!isNaN(favMax)) filtered = filtered.filter(s => (s.order + 1) <= favMax);
+
+  const playMin = parseInt(document.getElementById('cs-play-min').value);
+  const playMax = parseInt(document.getElementById('cs-play-max').value);
+  if (!isNaN(playMin) || !isNaN(playMax)) {
+    const sortedByPlay = [...songs].sort((a, b) => (b.playCount || 0) - (a.playCount || 0));
+    filtered = filtered.filter(s => {
+      const rank = sortedByPlay.findIndex(sp => sp.id === s.id) + 1;
+      if (!isNaN(playMin) && rank < playMin) return false;
+      if (!isNaN(playMax) && rank > playMax) return false;
+      return true;
+    });
+  }
+
+  const timeMin = parseInt(document.getElementById('cs-time-min').value);
+  const timeMax = parseInt(document.getElementById('cs-time-max').value);
+  if (!isNaN(timeMin) || !isNaN(timeMax)) {
+    const sortedByTime = [...songs].sort((a, b) => (b.totalWatchTime || 0) - (a.totalWatchTime || 0));
+    filtered = filtered.filter(s => {
+      const rank = sortedByTime.findIndex(sp => sp.id === s.id) + 1;
+      if (!isNaN(timeMin) && rank < timeMin) return false;
+      if (!isNaN(timeMax) && rank > timeMax) return false;
+      return true;
+    });
+  }
 
   const genre = document.getElementById('cs-genre').value;
-  
-  const moodContainer = document.getElementById('cs-moods-container');
-  const checkedMoods = Array.from(moodContainer.querySelectorAll('input:checked')).map(cb => cb.value);
-
-  const playCountSortedIds = [...songs].sort((a, b) => (b.playCount || 0) - (a.playCount || 0)).map(s => s.id);
-  const watchTimeSortedIds = [...songs].sort((a, b) => (b.totalWatchTime || 0) - (a.totalWatchTime || 0)).map(s => s.id);
-
-  let filtered = songs.filter(song => {
-    const favRank = song.order + 1;
-    if (favRank < favMin || favRank > favMax) return false;
-
-    const playRank = playCountSortedIds.indexOf(song.id) + 1;
-    if (playRank < playMin || playRank > playMax) return false;
-
-    const timeRank = watchTimeSortedIds.indexOf(song.id) + 1;
-    if (timeRank < timeMin || timeRank > timeMax) return false;
-
-    if (genre && song.genre !== genre) return false;
-
-    if (checkedMoods.length > 0) {
-      if (!song.moods || !Array.isArray(song.moods)) return false;
-      const hasMood = checkedMoods.some(m => song.moods.includes(m));
-      if (!hasMood) return false;
-    }
-
-    return true;
-  });
-
-  if (filtered.length === 0) {
-    showToast('条件に一致する曲がありませんでした。');
-    return;
+  if (genre) {
+    filtered = filtered.filter(s => s.genre === genre);
   }
 
-  filtered.sort(() => Math.random() - 0.5);
+  const checkedMoods = Array.from(document.querySelectorAll('#cs-moods-container input:checked')).map(el => el.value);
+  if (checkedMoods.length > 0) {
+    filtered = filtered.filter(s => {
+      if (!s.moods || !Array.isArray(s.moods)) return false;
+      return checkedMoods.some(m => s.moods.includes(m));
+    });
+  }
+
+  const checkedGens = Array.from(document.querySelectorAll('#cs-generations-container input:checked')).map(el => parseInt(el.value));
+  if (checkedGens.length > 0) {
+    filtered = filtered.filter(s => checkedGens.includes(s.generation));
+  }
+
+  for (let i = filtered.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
+  }
+
   currentPlaylist = filtered;
-  
   currentIndex = 0;
-  loadCurrentSong(true);
   renderRankingUI();
-  showToast(`${filtered.length}曲でシャッフル再生リストを生成しました。`);
-}
-
-function addManualToCustomShuffle() {
-  if (currentMode !== 'customShuffle') {
-    showToast('カスタムシャッフルモードでのみ使用可能です。');
-    return;
+  if (currentPlaylist.length > 0) {
+    loadCurrentSong(true);
+  } else {
+    showToast('条件に一致する曲がありません');
   }
-  const select = document.getElementById('cs-manual-add-select');
-  if (!select) return;
-  const songId = select.value;
-  const song = songs.find(s => s.id === songId);
-  if (!song) return;
-
-  if (currentPlaylist.some(s => s.id === songId)) {
-    showToast('既にリストに存在します。');
-    return;
-  }
-
-  const insertIndex = Math.floor(Math.random() * (currentPlaylist.length + 1));
-  currentPlaylist.splice(insertIndex, 0, song);
-  
-  relocateCurrentSong();
-  renderRankingUI();
-  showToast(`${song.title} をリストに追加しました。`);
 }
 
 function removeFromCustomShuffle(id, e) {
   e.stopPropagation();
-  if (currentPlaylist.length <= 1) {
-    showToast('リストが空になるため除外できません。');
-    return;
-  }
-  const idx = currentPlaylist.findIndex(s => s.id === id);
-  if (idx !== -1) {
-    const isCurrent = (currentSongId === id);
-    currentPlaylist.splice(idx, 1);
-    
-    if (isCurrent) {
-      if (currentIndex >= currentPlaylist.length) currentIndex = 0;
-      loadCurrentSong(true);
-    } else {
-      relocateCurrentSong();
-    }
+  currentPlaylist = currentPlaylist.filter(s => s.id !== id);
+  renderRankingUI();
+}
+
+function addManualToCustomShuffle() {
+  const select = document.getElementById('cs-manual-add-select');
+  if (!select) return;
+  const songId = select.value;
+  const song = songs.find(s => s.id === songId);
+  if (song && !currentPlaylist.some(s => s.id === songId)) {
+    currentPlaylist.push(song);
     renderRankingUI();
-    showToast('リストから除外しました。');
+    showToast('リストに追加しました');
+  } else {
+    showToast('すでに追加されているか、曲が見つかりません');
   }
 }
 </script>
 </body>
 </html>
-
