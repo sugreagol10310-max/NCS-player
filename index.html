@@ -2456,4 +2456,379 @@ function renderMoodColorSettingsUI() {
     return;
   }
 
-  let html = '<table style="margin-top: 5px; width:
+  let html = '<table style="margin-top: 5px; width:100%; border-collapse: collapse;"><thead><tr><th style="text-align: left; padding: 6px;">ムード名</th><th style="padding: 6px;">タグ色</th><th style="padding: 6px;">プレビュー</th></tr></thead><tbody>';
+
+  uniqueMoods.forEach(mood => {
+    const savedSetting = moodColors[mood];
+    let defaultBg = (typeof savedSetting === 'object' && savedSetting.bg) ? savedSetting.bg : (typeof savedSetting === 'string' ? savedSetting : '#553355');
+    
+    if (currentInputs[mood] !== undefined) {
+      defaultBg = currentInputs[mood];
+    }
+
+    const previewText = getContrastColor(defaultBg);
+
+    html += `
+      <tr>
+        <td style="padding: 6px; font-weight: bold; border-bottom: 1px solid #333;">${mood}</td>
+        <td style="padding: 6px; text-align: center; border-bottom: 1px solid #333;">
+          <input type="color" id="m-bg-${mood}" value="${defaultBg}" onchange="previewMoodColor('${mood}')" style="cursor: pointer;">
+        </td>
+        <td style="padding: 6px; text-align: center; border-bottom: 1px solid #333;">
+          <span id="m-prev-${mood}" class="rank-mood-tag" style="background-color: ${defaultBg}; color: ${previewText}; border: none; display: inline-block;">
+            ${mood}
+          </span>
+        </td>
+      </tr>
+    `;
+  });
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function previewMoodColor(mood) {
+  const bg = document.getElementById(`m-bg-${mood}`).value;
+  const prev = document.getElementById(`m-prev-${mood}`);
+  if (prev) {
+    prev.style.backgroundColor = bg;
+    prev.style.color = getContrastColor(bg);
+  }
+}
+
+function saveMoodColors() {
+  const allMoods = [];
+  songs.forEach(s => {
+    if (s.moods && Array.isArray(s.moods)) {
+      s.moods.forEach(m => { if (m) allMoods.push(m); });
+    }
+  });
+  const uniqueMoods = [...new Set(allMoods)];
+  const newMoodColors = { ...moodColors };
+
+  uniqueMoods.forEach(mood => {
+    const bgInput = document.getElementById(`m-bg-${mood}`);
+    if (bgInput) {
+      newMoodColors[mood] = { bg: bgInput.value };
+    }
+  });
+
+  moodColorsRef.set(newMoodColors, (error) => {
+    if (error) {
+      showToast('保存に失敗しました');
+    } else {
+      showToast('ムード別カラー設定を保存しました');
+      renderRankingUI();
+    }
+  });
+}
+
+function getMoodStyle(mood) {
+  if (!mood || !moodColors[mood] || !moodColors[mood].bg) {
+    return { bg: '#553355', text: '#ffffff' };
+  }
+  const bgColor = moodColors[mood].bg;
+  return { bg: bgColor, text: getContrastColor(bgColor) };
+}
+
+// --------------------------------------------------
+// 🎸 ジャンルTOP機能
+// --------------------------------------------------
+function populateGenreSelect() {
+  const select = document.getElementById('genre-select');
+  if (!select) return;
+
+  const currentVal = select.value;
+  const uniqueGenres = [...new Set(songs.map(s => s.genre).filter(g => g && g !== 'ジャンル不明'))].sort();
+  
+  select.innerHTML = uniqueGenres.map(g => `<option value="${g}">${g}</option>`).join('');
+
+  if (currentVal && uniqueGenres.includes(currentVal)) {
+    select.value = currentVal;
+  } else if (uniqueGenres.length > 0) {
+    select.value = uniqueGenres[0];
+  }
+}
+
+function updateGenreTopList() {
+  if (currentMode !== 'genreTop') return;
+
+  const genre = document.getElementById('genre-select')?.value;
+  const sortType = document.getElementById('genre-sort-select')?.value || 'favorite';
+
+  if (!genre) return;
+
+  let filtered = songs.filter(s => s.genre === genre);
+
+  if (sortType === 'favorite') {
+    filtered.sort((a, b) => a.order - b.order);
+  } else if (sortType === 'playCount') {
+    filtered.sort((a, b) => (b.playCount || 0) - (a.playCount || 0));
+  } else if (sortType === 'watchTime') {
+    filtered.sort((a, b) => (b.totalWatchTime || 0) - (a.totalWatchTime || 0));
+  }
+
+  currentPlaylist = filtered;
+  renderRankingUI();
+  relocateCurrentSong();
+}
+
+// --------------------------------------------------
+// 🎭 ムードTOP機能
+// --------------------------------------------------
+function populateMoodSelect() {
+  const select = document.getElementById('mood-select');
+  if (!select) return;
+
+  const currentVal = select.value;
+  const allMoods = [];
+  songs.forEach(s => {
+    if (s.moods && Array.isArray(s.moods)) {
+      s.moods.forEach(m => { if (m) allMoods.push(m); });
+    }
+  });
+  const uniqueMoods = [...new Set(allMoods)].sort();
+
+  select.innerHTML = uniqueMoods.map(m => `<option value="${m}">${m}</option>`).join('');
+
+  if (currentVal && uniqueMoods.includes(currentVal)) {
+    select.value = currentVal;
+  } else if (uniqueMoods.length > 0) {
+    select.value = uniqueMoods[0];
+  }
+}
+
+function updateMoodTopList() {
+  if (currentMode !== 'moodTop') return;
+
+  const mood = document.getElementById('mood-select')?.value;
+  const sortType = document.getElementById('mood-sort-select')?.value || 'favorite';
+
+  if (!mood) return;
+
+  let filtered = songs.filter(s => s.moods && Array.isArray(s.moods) && s.moods.includes(mood));
+
+  if (sortType === 'favorite') {
+    filtered.sort((a, b) => a.order - b.order);
+  } else if (sortType === 'playCount') {
+    filtered.sort((a, b) => (b.playCount || 0) - (a.playCount || 0));
+  } else if (sortType === 'watchTime') {
+    filtered.sort((a, b) => (b.totalWatchTime || 0) - (a.totalWatchTime || 0));
+  }
+
+  currentPlaylist = filtered;
+  renderRankingUI();
+  relocateCurrentSong();
+}
+
+// --------------------------------------------------
+// 🧬 世代別機能
+// --------------------------------------------------
+function populateGenerationSelect() {
+  const select = document.getElementById('generation-select');
+  if (!select) return;
+
+  const currentVal = select.value;
+  const uniqueGenerations = [...new Set(songs.map(s => s.generation).filter(g => g !== undefined && g !== null && g !== ''))].sort((a, b) => a - b);
+  
+  select.innerHTML = uniqueGenerations.map(g => `<option value="${g}">第${g}世代</option>`).join('');
+
+  if (currentVal && uniqueGenerations.includes(parseInt(currentVal))) {
+    select.value = currentVal;
+  } else if (uniqueGenerations.length > 0) {
+    select.value = uniqueGenerations[0];
+  }
+}
+
+function updateGenerationTopList() {
+  if (currentMode !== 'generationTop') return;
+
+  const extractMode = document.querySelector('input[name="gen-extract-mode"]:checked')?.value || 'single';
+  const sortType = document.getElementById('generation-sort-select')?.value || 'favorite';
+  
+  const singleSettings = document.getElementById('gen-single-settings');
+  const allTopSettings = document.getElementById('gen-all-top-settings');
+  if (extractMode === 'single') {
+    singleSettings.style.display = 'block';
+    allTopSettings.style.display = 'none';
+  } else {
+    singleSettings.style.display = 'none';
+    allTopSettings.style.display = 'block';
+  }
+
+  let filtered = [];
+
+  if (extractMode === 'single') {
+    const genVal = document.getElementById('generation-select')?.value;
+    if (!genVal) {
+      currentPlaylist = [];
+      renderRankingUI();
+      relocateCurrentSong();
+      return;
+    }
+    const targetGen = parseInt(genVal);
+    filtered = songs.filter(s => s.generation === targetGen);
+  } else {
+    const topN = parseInt(document.getElementById('generation-top-n')?.value) || 3;
+    const uniqueGenerations = [...new Set(songs.map(s => s.generation).filter(g => g !== undefined && g !== null && g !== ''))];
+    
+    uniqueGenerations.forEach(gen => {
+      let genSongs = songs.filter(s => s.generation === gen);
+      if (sortType === 'favorite') {
+        genSongs.sort((a, b) => a.order - b.order);
+      } else if (sortType === 'playCount') {
+        genSongs.sort((a, b) => (b.playCount || 0) - (a.playCount || 0));
+      } else if (sortType === 'watchTime') {
+        genSongs.sort((a, b) => (b.totalWatchTime || 0) - (a.totalWatchTime || 0));
+      }
+      filtered.push(...genSongs.slice(0, topN));
+    });
+    filtered = [...new Set(filtered)];
+  }
+
+  if (sortType === 'favorite') {
+    filtered.sort((a, b) => a.order - b.order);
+  } else if (sortType === 'playCount') {
+    filtered.sort((a, b) => (b.playCount || 0) - (a.playCount || 0));
+  } else if (sortType === 'watchTime') {
+    filtered.sort((a, b) => (b.totalWatchTime || 0) - (a.totalWatchTime || 0));
+  }
+
+  currentPlaylist = filtered;
+  renderRankingUI();
+  relocateCurrentSong();
+}
+
+// --------------------------------------------------
+// 🔀 カスタムシャッフル関連機能（補完）
+// --------------------------------------------------
+function populateCustomShuffleOptions() {
+  const csGenre = document.getElementById('cs-genre');
+  if (csGenre) {
+    const currentGenVal = csGenre.value;
+    const uniqueGenres = [...new Set(songs.map(s => s.genre).filter(g => g && g !== 'ジャンル不明'))].sort();
+    csGenre.innerHTML = '<option value="">すべて</option>' + uniqueGenres.map(g => `<option value="${g}">${g}</option>`).join('');
+    if (uniqueGenres.includes(currentGenVal)) csGenre.value = currentGenVal;
+  }
+
+  const csMoods = document.getElementById('cs-moods-container');
+  if (csMoods) {
+    const allMoods = [];
+    songs.forEach(s => {
+      if (s.moods && Array.isArray(s.moods)) {
+        s.moods.forEach(m => { if (m) allMoods.push(m); });
+      }
+    });
+    const uniqueMoods = [...new Set(allMoods)].sort();
+    const checkedMoods = Array.from(csMoods.querySelectorAll('input:checked')).map(el => el.value);
+    csMoods.innerHTML = uniqueMoods.map(m => `
+      <label style="display:inline-block; margin-right:10px;">
+        <input type="checkbox" value="${m}" ${checkedMoods.includes(m) ? 'checked' : ''}> ${m}
+      </label>
+    `).join('');
+  }
+
+  const csGenerations = document.getElementById('cs-generations-container');
+  if (csGenerations) {
+    const uniqueGens = [...new Set(songs.map(s => s.generation).filter(g => g !== undefined && g !== null && g !== ''))].sort((a, b) => a - b);
+    const checkedGens = Array.from(csGenerations.querySelectorAll('input:checked')).map(el => el.value);
+    csGenerations.innerHTML = uniqueGens.map(g => `
+      <label style="display:inline-block; margin-right:10px;">
+        <input type="checkbox" value="${g}" ${checkedGens.includes(g.toString()) ? 'checked' : ''}> 第${g}世代
+      </label>
+    `).join('');
+  }
+
+  const manualAddSelect = document.getElementById('cs-manual-add-select');
+  if (manualAddSelect) {
+    manualAddSelect.innerHTML = songs.map(s => `<option value="${s.id}">${s.title}</option>`).join('');
+  }
+}
+
+function generateCustomShuffle() {
+  let filtered = [...songs];
+
+  const favMin = parseInt(document.getElementById('cs-fav-min').value);
+  const favMax = parseInt(document.getElementById('cs-fav-max').value);
+  if (!isNaN(favMin)) filtered = filtered.filter(s => (s.order + 1) >= favMin);
+  if (!isNaN(favMax)) filtered = filtered.filter(s => (s.order + 1) <= favMax);
+
+  const playMin = parseInt(document.getElementById('cs-play-min').value);
+  const playMax = parseInt(document.getElementById('cs-play-max').value);
+  if (!isNaN(playMin) || !isNaN(playMax)) {
+    const sortedByPlay = [...songs].sort((a, b) => (b.playCount || 0) - (a.playCount || 0));
+    filtered = filtered.filter(s => {
+      const rank = sortedByPlay.findIndex(sp => sp.id === s.id) + 1;
+      if (!isNaN(playMin) && rank < playMin) return false;
+      if (!isNaN(playMax) && rank > playMax) return false;
+      return true;
+    });
+  }
+
+  const timeMin = parseInt(document.getElementById('cs-time-min').value);
+  const timeMax = parseInt(document.getElementById('cs-time-max').value);
+  if (!isNaN(timeMin) || !isNaN(timeMax)) {
+    const sortedByTime = [...songs].sort((a, b) => (b.totalWatchTime || 0) - (a.totalWatchTime || 0));
+    filtered = filtered.filter(s => {
+      const rank = sortedByTime.findIndex(sp => sp.id === s.id) + 1;
+      if (!isNaN(timeMin) && rank < timeMin) return false;
+      if (!isNaN(timeMax) && rank > timeMax) return false;
+      return true;
+    });
+  }
+
+  const genre = document.getElementById('cs-genre').value;
+  if (genre) {
+    filtered = filtered.filter(s => s.genre === genre);
+  }
+
+  const checkedMoods = Array.from(document.querySelectorAll('#cs-moods-container input:checked')).map(el => el.value);
+  if (checkedMoods.length > 0) {
+    filtered = filtered.filter(s => {
+      if (!s.moods || !Array.isArray(s.moods)) return false;
+      return checkedMoods.some(m => s.moods.includes(m));
+    });
+  }
+
+  const checkedGens = Array.from(document.querySelectorAll('#cs-generations-container input:checked')).map(el => parseInt(el.value));
+  if (checkedGens.length > 0) {
+    filtered = filtered.filter(s => checkedGens.includes(s.generation));
+  }
+
+  for (let i = filtered.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
+  }
+
+  currentPlaylist = filtered;
+  currentIndex = 0;
+  renderRankingUI();
+  if (currentPlaylist.length > 0) {
+    loadCurrentSong(true);
+  } else {
+    showToast('条件に一致する曲がありません');
+  }
+}
+
+function removeFromCustomShuffle(id, e) {
+  e.stopPropagation();
+  currentPlaylist = currentPlaylist.filter(s => s.id !== id);
+  renderRankingUI();
+}
+
+function addManualToCustomShuffle() {
+  const select = document.getElementById('cs-manual-add-select');
+  if (!select) return;
+  const songId = select.value;
+  const song = songs.find(s => s.id === songId);
+  if (song && !currentPlaylist.some(s => s.id === songId)) {
+    currentPlaylist.push(song);
+    renderRankingUI();
+    showToast('リストに追加しました');
+  } else {
+    showToast('すでに追加されているか、曲が見つかりません');
+  }
+}
+</script>
+</body>
+</html>
