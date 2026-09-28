@@ -261,6 +261,18 @@
         </select>
       </label>
       <button onclick="exportAnalyticsCSV()">CSV出力</button>
+      <!-- ▼ ここから追加 ▼ -->
+      <span style="margin-left: 15px; border-left: 1px solid #444; padding-left: 15px;">
+        <label>日ごと推移CSV: 
+          <select id="trend-csv-metric">
+            <option value="playCount">視聴回数</option>
+            <option value="watchTime">視聴時間</option>
+            <option value="retentionRate">維持率</option>
+          </select>
+        </label>
+        <button onclick="exportTrendCSV()">推移CSV出力</button>
+      </span>
+      <!-- ▲ ここまで追加 ▲ -->
     </div>
     <div style="margin-top: 6px;">
       <label>
@@ -1402,6 +1414,53 @@ function exportAnalyticsCSV() {
   });
 
   downloadCSV(csvContent, `analytics_${startDate}_to_${endDate}.csv`);
+}
+
+function exportTrendCSV() {
+  const startDate = document.getElementById('analytics-start-date').value;
+  const endDate = document.getElementById('analytics-end-date').value;
+  const metric = document.getElementById('trend-csv-metric').value;
+
+  if (!startDate || !endDate) return showToast('期間を指定してください。');
+  if (startDate > endDate) return showToast('開始日は終了日以前に指定してください。');
+
+  // 指定期間内の日付リストを取得
+  const allDates = Object.keys(allHistoryData).sort();
+  const todayStr = new Date().toISOString().split('T')[0];
+  if (!allDates.includes(todayStr)) allDates.push(todayStr);
+
+  // 指定された開始日〜終了日に収まる日付だけを抽出
+  const targetDates = allDates.filter(d => d >= startDate && d <= endDate);
+
+  if (targetDates.length === 0) return showToast('指定された期間内にデータが存在しません。');
+
+  // CSVヘッダーの作成（横軸に日付を並べる）
+  let csvContent = `曲名,Tier,ジャンル,${targetDates.join(',')}\n`;
+
+  // 各曲のデータを行として追加
+  songs.forEach(song => {
+    let row = `"${song.title.replace(/"/g, '""')}",${song.tier},${song.genre || 'ジャンル不明'}`;
+    
+    targetDates.forEach(dateStr => {
+      // 該当日付のデータを取得（日付が今日の場合はリアルタイムデータを使用）
+      const data = getSongSnapshotData(dateStr, song, dateStr === todayStr);
+      let val = '';
+      if (data) {
+        if (metric === 'playCount') {
+          val = data.playCount || 0;
+        } else if (metric === 'watchTime') {
+          val = Math.round((data.totalWatchTime || 0) / 60);
+        } else if (metric === 'retentionRate') {
+          val = data.retentionRate || 0;
+        }
+      }
+      row += `,${val}`;
+    });
+    csvContent += row + '\n';
+  });
+
+  // ファイル名をつけてダウンロード
+  downloadCSV(csvContent, `trend_${metric}_${startDate}_to_${endDate}.csv`);
 }
 
 // --------------------------------------------------
