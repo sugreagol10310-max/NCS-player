@@ -1618,8 +1618,8 @@ function computeAndRenderRecommendations() {
 }
 
 function setMode(mode, e) {
-  if (isStaminaRestrictedTime() && mode !== 'all') {
-    showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）は全曲リスト以外のタブを開けません');
+  if (isStaminaRestrictedTime() && mode !== 'all' && mode !== 'customShuffle') {
+    showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）は全曲リストとカスタムシャッフル以外のタブを開けません');
     return;
   }
 
