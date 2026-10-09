@@ -261,7 +261,6 @@
         </select>
       </label>
       <button onclick="exportAnalyticsCSV()">CSV出力</button>
-      <!-- ▼ ここから追加 ▼ -->
       <span style="margin-left: 15px; border-left: 1px solid #444; padding-left: 15px;">
         <label>日ごと推移CSV: 
           <select id="trend-csv-metric">
@@ -272,7 +271,6 @@
         </label>
         <button onclick="exportTrendCSV()">推移CSV出力</button>
       </span>
-      <!-- ▲ ここまで追加 ▲ -->
     </div>
     <div style="margin-top: 6px;">
       <label>
@@ -735,8 +733,8 @@ function renderTierSettingsUI() {
 }
 
 function saveTierSettings() {
-  if (isStaminaRestrictedTime()) {
-    return showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）はTier設定の変更ができません');
+  if (isStaminaRestrictedTime() && staminaSeconds <= 0) {
+    return showToast('スタミナがないためTier設定の変更ができません');
   }
 
   const updated = TIER_DEFINITIONS.map((t, idx) => {
@@ -1424,25 +1422,20 @@ function exportTrendCSV() {
   if (!startDate || !endDate) return showToast('期間を指定してください。');
   if (startDate > endDate) return showToast('開始日は終了日以前に指定してください。');
 
-  // 指定期間内の日付リストを取得
   const allDates = Object.keys(allHistoryData).sort();
   const todayStr = new Date().toISOString().split('T')[0];
   if (!allDates.includes(todayStr)) allDates.push(todayStr);
 
-  // 指定された開始日〜終了日に収まる日付だけを抽出
   const targetDates = allDates.filter(d => d >= startDate && d <= endDate);
 
   if (targetDates.length === 0) return showToast('指定された期間内にデータが存在しません。');
 
-  // CSVヘッダーの作成（横軸に日付を並べる）
   let csvContent = `曲名,Tier,ジャンル,${targetDates.join(',')}\n`;
 
-  // 各曲のデータを行として追加
   songs.forEach(song => {
     let row = `"${song.title.replace(/"/g, '""')}",${song.tier},${song.genre || 'ジャンル不明'}`;
     
     targetDates.forEach(dateStr => {
-      // 該当日付のデータを取得（日付が今日の場合はリアルタイムデータを使用）
       const data = getSongSnapshotData(dateStr, song, dateStr === todayStr);
       let val = '';
       if (data) {
@@ -1459,7 +1452,6 @@ function exportTrendCSV() {
     csvContent += row + '\n';
   });
 
-  // ファイル名をつけてダウンロード
   downloadCSV(csvContent, `trend_${metric}_${startDate}_to_${endDate}.csv`);
 }
 
@@ -1765,8 +1757,8 @@ function importCSVData() {
 // --------------------------------------------------
 function swapSongOrder(songId, direction, e) {
   if (e) e.stopPropagation();
-  if (isStaminaRestrictedTime()) {
-    return showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）は順位の編集ができません');
+  if (isStaminaRestrictedTime() && staminaSeconds <= 0) {
+    return showToast('スタミナがないため順位の編集ができません');
   }
   const idx = songs.findIndex(s => s.id === songId);
   if (idx === -1) return;
@@ -1779,8 +1771,8 @@ function swapSongOrder(songId, direction, e) {
 }
 
 function moveCurrentSongToRank() {
-  if (isStaminaRestrictedTime()) {
-    return showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）は順位の編集ができません');
+  if (isStaminaRestrictedTime() && staminaSeconds <= 0) {
+    return showToast('スタミナがないため順位の編集ができません');
   }
   if (currentPlaylist.length === 0) return;
   const targetInput = document.getElementById('input-direct-rank');
@@ -1803,8 +1795,8 @@ function moveCurrentSongToRank() {
 }
 
 function moveCurrentSongStep(step) {
-  if (isStaminaRestrictedTime()) {
-    return showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）は順位の編集ができません');
+  if (isStaminaRestrictedTime() && staminaSeconds <= 0) {
+    return showToast('スタミナがないため順位の編集ができません');
   }
   if (currentPlaylist.length === 0) return;
   const song = currentPlaylist[currentIndex];
@@ -1856,8 +1848,8 @@ function updateTrackInfoDisplay() {
 // ✎ 曲名・ジャンル・Mood・世代の編集
 // --------------------------------------------------
 function toggleEditSongForm() {
-  if (isStaminaRestrictedTime()) {
-    return showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）はムード・ジャンル等の編集ができません');
+  if (isStaminaRestrictedTime() && staminaSeconds <= 0) {
+    return showToast('スタミナがないためムード・ジャンル等の編集ができません');
   }
   const form = document.getElementById('edit-song-form');
   if (!form) return;
@@ -1876,8 +1868,8 @@ function toggleEditSongForm() {
 }
 
 function saveSongEdit() {
-  if (isStaminaRestrictedTime()) {
-    return showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）はムード・ジャンル等の編集ができません');
+  if (isStaminaRestrictedTime() && staminaSeconds <= 0) {
+    return showToast('スタミナがないためムード・ジャンル等の編集ができません');
   }
   const song = currentPlaylist[currentIndex];
   if (!song) return;
@@ -2283,8 +2275,8 @@ document.addEventListener('keydown', (e) => {
 });
 
 function addNewSong() {
-  if (isStaminaRestrictedTime()) {
-    return showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）は新規曲の追加ができません');
+  if (isStaminaRestrictedTime() && staminaSeconds <= 0) {
+    return showToast('スタミナがないため新規曲の追加ができません');
   }
 
   const titleInput = document.getElementById('input-title');
