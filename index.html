@@ -2266,12 +2266,6 @@ function renderRankingUI() {
     }
     
     let moodsHtml = '';
-    if (song.moods && song.moods.length > 0) {
-      moodsHtml = song.moods.map(m => {
-        const mStyle = getMoodStyle(m);
-        return `<span class="rank-mood-tag" style="background-color: ${mStyle.bg}; color: ${mStyle.text};">${m}</span>`;
-      }).join('');
-    }
 
     li.innerHTML = `
       <span class="rank-num">${index + 1}位</span>
