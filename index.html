@@ -61,17 +61,21 @@
     #seek-bar { width: 100%; margin-top: 8px; accent-color: #00ffcc; }
 
     ul.rank-list { list-style: none; padding: 0; }
+    
+    /* ランキング項目の再設計 */
     li.rank-item {
       background: #2a2a2a;
-      margin-bottom: 6px;
+      margin-bottom: 8px;
       padding: 10px;
-      border-radius: 4px;
+      border-radius: 6px;
       display: flex;
       align-items: center;
+      gap: 10px;
       cursor: pointer;
     }
     li.rank-item:hover { background: #333; }
     li.rank-item.active { border-left: 4px solid #00ffcc; background: #3a3a3a; }
+
     .tier-header {
       background: #333;
       color: #ffaa00;
@@ -80,66 +84,97 @@
       margin-top: 10px;
       border-radius: 4px;
     }
-    .rank-num { font-weight: bold; margin-right: 10px; width: 40px; }
+
+    .rank-left-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .rank-num { font-weight: bold; width: 36px; text-align: right; }
+    
+    .rank-thumb {
+      width: 56px;
+      height: 42px;
+      object-fit: cover;
+      border-radius: 4px;
+      flex-shrink: 0;
+      background: #000;
+    }
+
+    /* 曲情報のメインコンテナ（縦並びで領域圧迫を防止） */
+    .rank-content-area {
+      flex-grow: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .rank-title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
     .rank-tier-tag {
       background: #444;
-      padding: 2px 6px;
+      padding: 1px 5px;
       border-radius: 3px;
-      font-size: 12px;
-      margin-right: 10px;
+      font-size: 11px;
+      flex-shrink: 0;
     }
-    /* 曲名表示：2行まで許可し、溢れる場合は自動調整 */
+
+    /* 曲名：2行まで許可し、長い場合も自動折り返し */
     .rank-name {
-      flex-grow: 1;
       font-weight: bold;
+      font-size: 14px;
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
       word-break: break-all;
-      min-width: 0;
       line-height: 1.3;
-      max-height: 2.6em;
     }
-    .rank-main-info { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; overflow: hidden; }
-    .rank-del-btn { background: #ff4444; color: #fff; padding: 2px 6px; font-size: 10px; }
-    .rank-move-btn { background: #555; color: #fff; padding: 2px 7px; font-size: 12px; margin-right: 2px; }
-    .rank-move-btn:hover { background: #777; }
-    .rank-playcount { font-size: 16px; font-weight: bold; color: #00ffcc; margin-right: 10px; }
+
+    /* 補助情報行（レーベル／ジャンルタグ、世代など） */
+    .rank-sub-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+    }
+
     .rank-genre-tag {
       background: #234040;
       color: #7fffd4;
-      padding: 2px 6px;
+      padding: 1px 5px;
       border-radius: 3px;
-      font-size: 12px;
-      margin-right: 6px;
-      display: inline-block;
-    }
-    .rank-mood-tag {
-      padding: 2px 6px;
-      border-radius: 3px;
-      font-size: 12px;
-      margin-right: 4px;
+      font-size: 11px;
       display: inline-block;
     }
     .rank-generation-tag {
       background: #402330;
       color: #ff7fbf;
-      padding: 2px 6px;
+      padding: 1px 5px;
       border-radius: 3px;
-      font-size: 12px;
-      margin-right: 6px;
+      font-size: 11px;
       display: inline-block;
     }
-    .rank-thumb {
-      width: 48px;
-      height: 36px;
-      object-fit: cover;
-      border-radius: 3px;
-      margin-right: 10px;
+
+    .rank-right-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
       flex-shrink: 0;
-      background: #000;
     }
+
+    .rank-playcount { font-size: 14px; font-weight: bold; color: #00ffcc; white-space: nowrap; }
+    .rank-del-btn { background: #ff4444; color: #fff; padding: 4px 8px; font-size: 11px; border-radius: 4px; }
+    .rank-move-btn { background: #555; color: #fff; padding: 2px 6px; font-size: 11px; border-radius: 3px; }
+    .rank-move-btn:hover { background: #777; }
 
     #rank-search { width: 100%; box-sizing: border-box; margin-bottom: 10px; }
     .rank-list { max-height: 75vh; overflow-y: auto; padding-right: 4px; }
@@ -215,7 +250,7 @@
                 <button onclick="toggleEditSongForm()" style="font-size: 11px; padding: 3px 6px;">✎ 編集</button>
               </div>
               <div style="margin-top: 2px;">ジャンル: <span id="display-genre">-</span></div>
-              <div style="margin-top: 2px;">ムード: <span id="display-mood">-</span></div>
+              <div style="margin-top: 2px; display: none;">ムード: <span id="display-mood">-</span></div>
               <div style="margin-top: 2px;">世代: <span id="display-generation" class="rank-generation-tag">-</span></div>
               <div style="margin-top: 4px;">
                 再生数: <span id="display-plays">0</span>回 | 
@@ -232,7 +267,7 @@
             <div style="margin-top: 4px;">ジャンル (複数選択):
               <div id="edit-genre-checkboxes" style="max-height: 120px; overflow-y: auto; background: #2a2a2a; border: 1px solid #444; padding: 6px; border-radius: 4px; margin-top: 4px; display: flex; flex-direction: column; gap: 4px;"></div>
             </div>
-            <div style="margin-top: 4px;">ムード: <input type="text" id="edit-mood-input" placeholder="例: Chill, Happy (カンマ区切り)" style="width: 60%;"></div>
+            <div style="margin-top: 4px; display: none;">ムード: <input type="text" id="edit-mood-input" placeholder="例: Chill, Happy (カンマ区切り)" style="width: 60%;"></div>
             <div style="margin-top: 4px;">世代: <input type="number" id="edit-generation-input" placeholder="例: 1 (数字のみ)" style="width: 60%;"></div>
             <div style="margin-top: 6px;">
               <button onclick="saveSongEdit()">💾 保存</button>
@@ -427,7 +462,7 @@
           <option value="">すべて</option>
         </select>
       </div>
-      <div style="background: #2a2a2a; padding: 10px; border-radius: 4px; min-width: 200px; flex-grow: 1;">
+      <div style="background: #2a2a2a; padding: 10px; border-radius: 4px; min-width: 200px; flex-grow: 1; display: none;">
         <label style="font-size:12px; color:#00ffcc; font-weight:bold;">ムード (複数選択可)</label><br>
         <div id="cs-moods-container" style="max-height: 80px; overflow-y: auto; background: #121212; border: 1px solid #444; padding: 5px; border-radius: 4px;">
         </div>
@@ -468,7 +503,7 @@
       <label style="font-size: 13px; color: #aaa;">ジャンル (複数選択):</label>
       <div id="input-genre-checkboxes" style="max-height: 120px; overflow-y: auto; background: #2a2a2a; border: 1px solid #444; padding: 6px; border-radius: 4px; margin-top: 4px; display: flex; flex-direction: column; gap: 4px;"></div>
     </div>
-    <input type="text" id="input-mood" placeholder="ムード (カンマ区切り、空欄可)">
+    <input type="text" id="input-mood" placeholder="ムード (カンマ区切り、空欄可)" style="display:none;">
     <input type="number" id="input-generation" placeholder="世代 (数字、空欄可)">
     <input type="number" id="input-year" placeholder="リリース年 (例: 2024)" value="2024">
     <button onclick="addNewSong()">追加</button>
@@ -532,7 +567,6 @@ const ALL_GENRES_AND_COLORS = {
   "Trance": "#ffffff",
   "Trap": "#00ff00",
   "Witch House": "#ffffff",
-  // 公式ジャンル
   "NCS-Red": "#ff0000",
   "NCS-Orange": "#ff681f",
   "NCS-Yellow": "#ffff00",
@@ -566,7 +600,6 @@ function getGenreStyle(genre) {
   return { bg: bgColor, text: getContrastColor(bgColor) };
 }
 
-// フォーム等にジャンルのチェックボックスリストを生成するヘルパー
 function buildGenreCheckboxesHTML(containerId, selectedGenres = []) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -593,9 +626,6 @@ function getSelectedGenresFromCheckboxes(containerId) {
   return Array.from(checked).map(el => el.value);
 }
 
-// --------------------------------------------------
-// 🍞 トースト通知
-// --------------------------------------------------
 let toastTimer = null;
 function showToast(message) {
   const el = document.getElementById('toast');
@@ -606,10 +636,7 @@ function showToast(message) {
   toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
 }
 
-// --------------------------------------------------
-// ⚡ スタミナ管理機能
-// --------------------------------------------------
-let staminaSeconds = 30 * 60; // 最大30分 (1800秒)
+let staminaSeconds = 30 * 60;
 let lastStaminaCheckTime = Date.now();
 
 let holidays = {};
@@ -679,9 +706,6 @@ function renderStaminaUI() {
 loadStaminaState();
 setInterval(updateStamina, 1000);
 
-// --------------------------------------------------
-// 🔥 ティア設定マスター定義
-// --------------------------------------------------
 let TIER_DEFINITIONS = [
   { code: "SSSS", name: "GOAT", maxRank: 1 },
   { code: "SSS",  name: "Masterpiece of Masterpiece", maxRank: 3 },
@@ -728,9 +752,6 @@ function rankToTierCode(rank) {
   return "K";
 }
 
-// --------------------------------------------------
-// 🔥 Firebase設定
-// --------------------------------------------------
 const firebaseConfig = {
   apiKey: "AIzaSyCNrw2H5gjO7Ai_eOJxuwe6UzeG06l_MFQ",
   authDomain: "ncs-music-e2d05.firebaseapp.com",
@@ -747,9 +768,6 @@ const songsRef = db.ref('music_chart/songs');
 const historyRef = db.ref('music_chart/daily_history');
 const tierDefinitionsRef = db.ref('music_chart/tier_definitions');
 
-// --------------------------------------------------
-// アプリ変数
-// --------------------------------------------------
 let songs = [];
 let currentPlaylist = [];
 let currentIndex = 0;
@@ -781,9 +799,6 @@ let trendEndSnapshot = null;
 let trendStartDateUsed = null;
 let trendEndDateUsed = null;
 
-// --------------------------------------------------
-// 🔥 Tier基準設定 同期 & UI
-// --------------------------------------------------
 tierDefinitionsRef.on('value', (snapshot) => {
   const data = snapshot.val();
   if (data && Array.isArray(data) && data.length > 0) {
@@ -853,9 +868,6 @@ function saveTierSettings() {
   });
 }
 
-// --------------------------------------------------
-// 🔥 Firebaseリアルタイム同期
-// --------------------------------------------------
 function showSyncIndicator() {
   const el = document.getElementById('sync-indicator');
   if (!el) return;
@@ -889,7 +901,6 @@ songsRef.on('value', (snapshot) => {
         needsSaveCheck = true;
       }
 
-      // ジャンル複数選択のマイグレーション対応
       let songGenres = [];
       if (Array.isArray(s.genres)) {
         songGenres = s.genres;
@@ -1006,9 +1017,6 @@ function getRetentionRate(song) {
   return Math.min((avgWatchTime / song.duration) * 100, 100);
 }
 
-// --------------------------------------------------
-// 🕒 毎日 0:00 バックアップ
-// --------------------------------------------------
 let isSavingSnapshot = false;
 let lastHistoryCheckDate = null;
 
@@ -1060,9 +1068,6 @@ function saveDailySnapshot(dateStr) {
   });
 }
 
-// --------------------------------------------------
-// 📅 日付ヘルパー
-// --------------------------------------------------
 function formatDateStr(d) {
   return d.toISOString().split('T')[0];
 }
@@ -1134,9 +1139,6 @@ setInterval(() => {
   });
 }, 5 * 60 * 1000);
 
-// --------------------------------------------------
-// 🔥 アナリティクス機能
-// --------------------------------------------------
 function initAnalyticsDropdowns() {
   const startDateSelect = document.getElementById('analytics-start-date');
   const endDateSelect = document.getElementById('analytics-end-date');
@@ -1575,9 +1577,6 @@ function exportTrendCSV() {
   downloadCSV(csvContent, `trend_${metric}_${startDate}_to_${endDate}.csv`);
 }
 
-// --------------------------------------------------
-// モード選択とソート処理
-// --------------------------------------------------
 function updatePlaylistByMode(forceReshuffle = false) {
   const analyticsContainer = document.getElementById('analytics-container');
   const recommendContainer = document.getElementById('recommend-container');
@@ -1643,9 +1642,6 @@ function updatePlaylistByMode(forceReshuffle = false) {
   }
 }
 
-// --------------------------------------------------
-// 🎯 おすすめ機能
-// --------------------------------------------------
 function computeAndRenderRecommendations() {
   const container = document.getElementById('recommend-list-body');
   if (!container) return;
@@ -1708,10 +1704,18 @@ function computeAndRenderRecommendations() {
 
     return `
       <li class="rank-item" onclick="selectSongById('${i.id}')">
-        <img src="https://i.ytimg.com/vi/${i.youtubeId}/default.jpg" class="rank-thumb" loading="lazy" alt="">
-        <span class="rank-tier-tag">${i.tier}</span>
-        ${genresHtml}
-        <span class="rank-name">${i.title}</span>
+        <div class="rank-left-group">
+          <img src="https://i.ytimg.com/vi/${i.youtubeId}/default.jpg" class="rank-thumb" loading="lazy" alt="">
+        </div>
+        <div class="rank-content-area">
+          <div class="rank-title-row">
+            <span class="rank-tier-tag">${i.tier}</span>
+            <span class="rank-name">${i.title}</span>
+          </div>
+          <div class="rank-sub-row">
+            ${genresHtml}
+          </div>
+        </div>
         <span style="font-size:12px; color:${isPositive ? '#00ffcc' : '#ff8888'}; margin-right:8px; white-space:nowrap;">
           好き度${i.favRank}位 / 直近3日再生数${i.engRank}位 (${i.recentPlays}回, ${i.gap > 0 ? '+' : ''}${i.gap})
         </span>
@@ -1812,9 +1816,6 @@ function selectSongById(id) {
   setTimeout(() => { isTransitioning = false; setNavButtonsDisabled(false); }, 400);
 }
 
-// --------------------------------------------------
-// 📥 CSVインポート処理
-// --------------------------------------------------
 function importCSVData() {
   const rawText = document.getElementById('csv-input').value.trim();
   if (!rawText) return showToast('CSVテキストを貼り付けてください。');
@@ -1878,9 +1879,6 @@ function importCSVData() {
   showToast(`CSVインポート完了！ 加算:${updatedCount}件 / スキップ:${ignoredCount}件`);
 }
 
-// --------------------------------------------------
-// UI表示 ＆ 操作
-// --------------------------------------------------
 function swapSongOrder(songId, direction, e) {
   if (e) e.stopPropagation();
   if (isStaminaRestrictedTime() && staminaSeconds <= 0) {
@@ -1979,12 +1977,9 @@ function updateTrackInfoDisplay() {
   }
 }
 
-// --------------------------------------------------
-// ✎ 曲名・動画URL・ジャンル・Mood・世代の編集
-// --------------------------------------------------
 function toggleEditSongForm() {
   if (isStaminaRestrictedTime() && staminaSeconds <= 0) {
-    return showToast('スタミナがないためムード・ジャンル等の編集ができません');
+    return showToast('スタミナがないため編集ができません');
   }
   const form = document.getElementById('edit-song-form');
   if (!form) return;
@@ -1995,7 +1990,6 @@ function toggleEditSongForm() {
     document.getElementById('edit-title-input').value = song.title;
     document.getElementById('edit-ytid-input').value = song.youtubeId;
     buildGenreCheckboxesHTML('edit-genre-checkboxes', song.genres || []);
-    document.getElementById('edit-mood-input').value = (song.moods && song.moods.length) ? song.moods.join(', ') : '';
     document.getElementById('edit-generation-input').value = (song.generation !== null && song.generation !== undefined && !isNaN(song.generation)) ? song.generation : '';
     form.style.display = 'block';
   } else {
@@ -2005,7 +1999,7 @@ function toggleEditSongForm() {
 
 function saveSongEdit() {
   if (isStaminaRestrictedTime() && staminaSeconds <= 0) {
-    return showToast('スタミナがないためムード・ジャンル等の編集ができません');
+    return showToast('スタミナがないため編集ができません');
   }
   const song = currentPlaylist[currentIndex];
   if (!song) return;
@@ -2013,7 +2007,6 @@ function saveSongEdit() {
   const newTitle = document.getElementById('edit-title-input').value.trim();
   let newYtidInput = document.getElementById('edit-ytid-input').value.trim();
   const newGenres = getSelectedGenresFromCheckboxes('edit-genre-checkboxes');
-  const rawMood = document.getElementById('edit-mood-input').value.trim();
   const rawGen = document.getElementById('edit-generation-input').value.trim();
 
   if (!newTitle || !newYtidInput) return showToast('曲名と動画URLを入力してください');
@@ -2027,20 +2020,17 @@ function saveSongEdit() {
     }
   }
 
-  const newMoods = rawMood ? rawMood.split(',').map(m => m.trim()).filter(Boolean) : [];
   const newGen = rawGen ? parseInt(rawGen) : null;
 
   song.title = newTitle;
   song.youtubeId = newYtidInput;
   song.genres = newGenres;
-  song.moods = newMoods;
   song.generation = newGen;
 
   db.ref(`music_chart/songs/${song.id}`).update({ 
     title: song.title, 
     youtubeId: song.youtubeId,
     genres: song.genres,
-    moods: song.moods,
     generation: song.generation
   });
 
@@ -2050,9 +2040,6 @@ function saveSongEdit() {
   showToast('保存しました');
 }
 
-// --------------------------------------------------
-// 🎧 視聴計測 ＆ YouTube API 連動
-// --------------------------------------------------
 function onPlayerStateChange(event) {
   const playPauseBtn = document.getElementById('play-pause-btn');
 
@@ -2076,7 +2063,7 @@ function togglePlayPause() {
     player.pauseVideo();
   } else {
     if (isStaminaRestrictedTime() && staminaSeconds <= 0) {
-      showToast('スタミナがないため曲を再生できません（祝日を除く平日0:00〜21:00制限）');
+      showToast('スタミナがないため曲を再生できません');
       return;
     }
     player.playVideo();
@@ -2161,9 +2148,6 @@ window.addEventListener('beforeunload', () => {
   if (activeListeningSong) flushListenData(activeListeningSong);
 });
 
-// --------------------------------------------------
-// 🎚 シークバー
-// --------------------------------------------------
 let seekBarTimer = null;
 function seekVideo(percent) {
   if (!player || !player.getDuration) return;
@@ -2185,7 +2169,7 @@ function startSeekBarUpdater() {
 }
 
 // --------------------------------------------------
-// ランキング表示
+// ランキング表示（ご指示に基づき再設計）
 // --------------------------------------------------
 function renderRankingUI() {
   if (currentMode === 'analytics' || currentMode === 'recommend') return;
@@ -2250,14 +2234,16 @@ function renderRankingUI() {
     } else if (currentMode === 'trending') {
       const startPlays = trendStartSnapshot ? (trendStartSnapshot[song.id]?.playCount || 0) : 0;
       const endPlays = trendEndSnapshot ? (trendEndSnapshot[song.id]?.playCount ?? song.playCount) : song.playCount;
-      metaStatsHtml = `<span style="font-size: 15px; color: #ffaa00; font-weight: bold; margin-right: 8px;">🔥 +${endPlays - startPlays}回</span>`;
+      metaStatsHtml = `<span style="font-size: 14px; color: #ffaa00; font-weight: bold; white-space: nowrap;">🔥 +${endPlays - startPlays}回</span>`;
     }
 
     let moveButtonsHtml = '';
     if (currentMode === 'all') {
       moveButtonsHtml = `
-        <button class="rank-move-btn" title="1つ上へ" onclick="swapSongOrder('${song.id}', -1, event)">▲</button>
-        <button class="rank-move-btn" title="1つ下へ" onclick="swapSongOrder('${song.id}', 1, event)">▼</button>
+        <div style="display:flex; flex-direction:column; gap:2px;">
+          <button class="rank-move-btn" title="1つ上へ" onclick="swapSongOrder('${song.id}', -1, event)">▲</button>
+          <button class="rank-move-btn" title="1つ下へ" onclick="swapSongOrder('${song.id}', 1, event)">▼</button>
+        </div>
       `;
     }
 
@@ -2265,52 +2251,42 @@ function renderRankingUI() {
     if (song.genres && song.genres.length > 0) {
       genresHtml = song.genres.map(g => {
         const st = getGenreStyle(g);
-        return `<span class="rank-genre-tag" style="background-color: ${st.bg}; color: ${st.text}; border: none;">${g}</span>`;
+        return `<span class="rank-genre-tag" style="background-color: ${st.bg}; color: ${st.text};">${g}</span>`;
       }).join('');
     }
     
-    let moodsHtml = '';
+    let generationHtml = '';
+    if (song.generation !== null && song.generation !== undefined && !isNaN(song.generation)) {
+      generationHtml = `<span class="rank-generation-tag">第${song.generation}世代</span>`;
+    }
 
+    // 独立したレイアウト構造への組み立て
     li.innerHTML = `
-      <span class="rank-num">${index + 1}位</span>
-      ${moveButtonsHtml}
-      <img src="https://i.ytimg.com/vi/${song.youtubeId}/default.jpg" class="rank-thumb" loading="lazy" alt="">
-      <div class="rank-main-info">
-      <span class="rank-tier-tag">${song.tier}</span>
-      ${genresHtml}
-      ${moodsHtml}
-      ${(song.generation !== null && song.generation !== undefined && !isNaN(song.generation)) ? `<span class="rank-generation-tag">第${song.generation}世代</span>` : ''}
-      <span class="rank-name">${song.title}</span>
+      <div class="rank-left-group">
+        <span class="rank-num">${index + 1}位</span>
+        ${moveButtonsHtml}
+        <img src="https://i.ytimg.com/vi/${song.youtubeId}/default.jpg" class="rank-thumb" loading="lazy" alt="">
       </div>
-      ${metaStatsHtml}
-      ${currentMode === 'customShuffle' 
-        ? `<button class="rank-del-btn" onclick="removeFromCustomShuffle('${song.id}', event)" style="background: #ffaa00; font-size: 11px; padding: 2px 6px;">外す</button>` 
-        : `<button class="rank-del-btn" onclick="deleteSong('${song.id}', event)">✕</button>`}
+      
+      <div class="rank-content-area">
+        <div class="rank-title-row">
+          <span class="rank-tier-tag">${song.tier}</span>
+          <span class="rank-name">${song.title}</span>
+        </div>
+        <div class="rank-sub-row">
+          ${generationHtml}
+          ${genresHtml}
+        </div>
+      </div>
+
+      <div class="rank-right-group">
+        ${metaStatsHtml}
+        ${currentMode === 'customShuffle' 
+          ? `<button class="rank-del-btn" onclick="removeFromCustomShuffle('${song.id}', event)" style="background: #ffaa00;">外す</button>` 
+          : `<button class="rank-del-btn" onclick="deleteSong('${song.id}', event)">✕</button>`}
+      </div>
     `;
     listEl.appendChild(li);
-    setTimeout(fitRankingText, 0);
-  });
-
-  fitRankingText();
-
-  if (listEl.children.length === 0) {
-    const empty = document.createElement('li');
-    empty.style.cssText = 'padding:15px;color:#888;text-align:center;background:transparent;cursor:default;';
-    empty.innerText = searchTerm ? '該当する曲が見つかりません' : '曲がありません';
-    listEl.appendChild(empty);
-  }
-}
-
-function fitRankingText() {
-  document.querySelectorAll('.rank-main-info').forEach(el => {
-    const name = el.querySelector('.rank-name');
-    if (!name) return;
-    name.style.fontSize = '16px';
-    let size = 16;
-    while (el.scrollHeight > el.clientHeight && size > 9) {
-      size -= 1;
-      name.style.fontSize = size + 'px';
-    }
   });
 }
 
@@ -2331,7 +2307,7 @@ function loadCurrentSong(shouldPlay = true) {
   if (bar) bar.value = 0;
 
   if (shouldPlay && isStaminaRestrictedTime() && staminaSeconds <= 0) {
-    showToast('スタミナがないため曲を再生できません（祝日を除く平日0:00〜21:00制限）');
+    showToast('スタミナがないため曲を再生できません');
     if (player && typeof player.cueVideoById === 'function') {
       player.cueVideoById(song.youtubeId);
     }
@@ -2410,9 +2386,6 @@ function reshuffleNow() {
   showToast('シャッフルし直しました');
 }
 
-// --------------------------------------------------
-// ⌨️ キーボードショートカット
-// --------------------------------------------------
 document.addEventListener('keydown', (e) => {
   const tag = (e.target.tagName || '').toLowerCase();
   if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
@@ -2430,7 +2403,6 @@ function addNewSong() {
   const titleInput = document.getElementById('input-title');
   let ytidInput = document.getElementById('input-ytid').value.trim();
   const selectedGenres = getSelectedGenresFromCheckboxes('input-genre-checkboxes');
-  const moodInput = document.getElementById('input-mood');
   const genInput = document.getElementById('input-generation');
   const yearInput = document.getElementById('input-year');
 
@@ -2439,9 +2411,6 @@ function addNewSong() {
   if (ytidInput.includes('v=')) ytidInput = ytidInput.split('v=')[1].split('&')[0];
   else if (ytidInput.includes('youtu.be/')) ytidInput = ytidInput.split('youtu.be/')[1].split('?')[0];
 
-  const rawMood = moodInput ? moodInput.value.trim() : '';
-  const parsedMoods = rawMood ? rawMood.split(',').map(m => m.trim()).filter(Boolean) : [];
-  
   const rawGen = genInput ? genInput.value.trim() : '';
   const parsedGen = rawGen ? parseInt(rawGen) : null;
 
@@ -2453,7 +2422,7 @@ function addNewSong() {
     youtubeId: ytidInput,
     title: titleInput.value.trim(),
     genres: selectedGenres,
-    moods: parsedMoods,
+    moods: [],
     generation: parsedGen,
     year: parseInt(yearInput.value) || 2024,
     tier: rankToTierCode(insertIndex + 1),
@@ -2470,7 +2439,6 @@ function addNewSong() {
   titleInput.value = '';
   document.getElementById('input-ytid').value = '';
   buildGenreCheckboxesHTML('input-genre-checkboxes', []);
-  if (moodInput) moodInput.value = '';
   if (genInput) genInput.value = '';
   showToast('曲を追加しました');
 }
@@ -2510,7 +2478,7 @@ function importData(event) {
               ...s,
               tier: rankToTierCode(idx + 1),
               genres: songGenres,
-              moods: Array.isArray(s.moods) ? s.moods : (s.mood ? s.mood.split(',').map(m=>m.trim()).filter(Boolean) : []),
+              moods: Array.isArray(s.moods) ? s.moods : [],
               generation: s.generation !== undefined && s.generation !== null ? parseInt(s.generation) : null,
               logicalMaxWatchTime: s.logicalMaxWatchTime !== undefined ? s.logicalMaxWatchTime : ((s.playCount || 0) * (s.duration || 200)),
               order: idx
@@ -2527,27 +2495,6 @@ function importData(event) {
   reader.readAsText(file);
 }
 
-// --------------------------------------------------
-// 🎭 ムードカラー設定
-// --------------------------------------------------
-let moodColors = {};
-const moodColorsRef = db.ref('music_chart/mood_colors');
-moodColorsRef.on('value', (snapshot) => {
-  moodColors = snapshot.val() || {};
-  renderRankingUI();
-});
-
-function getMoodStyle(mood) {
-  if (!mood || !moodColors[mood] || !moodColors[mood].bg) {
-    return { bg: '#553355', text: '#ffffff' };
-  }
-  const bgColor = moodColors[mood].bg;
-  return { bg: bgColor, text: getContrastColor(bgColor) };
-}
-
-// --------------------------------------------------
-// 🎸 ジャンルTOP機能
-// --------------------------------------------------
 function populateGenreSelect() {
   const select = document.getElementById('genre-select');
   if (!select) return;
@@ -2587,9 +2534,6 @@ function updateGenreTopList() {
   relocateCurrentSong();
 }
 
-// --------------------------------------------------
-// 🎭 ムードTOP機能
-// --------------------------------------------------
 function populateMoodSelect() {
   const select = document.getElementById('mood-select');
   if (!select) return;
@@ -2635,9 +2579,6 @@ function updateMoodTopList() {
   relocateCurrentSong();
 }
 
-// --------------------------------------------------
-// 🧬 世代別機能
-// --------------------------------------------------
 function populateGenerationSelect() {
   const select = document.getElementById('generation-select');
   if (!select) return;
@@ -2713,9 +2654,6 @@ function updateGenerationTopList() {
   relocateCurrentSong();
 }
 
-// --------------------------------------------------
-// 🔀 カスタムシャッフル関連機能
-// --------------------------------------------------
 function populateCustomShuffleOptions() {
   const csGenre = document.getElementById('cs-genre');
   if (csGenre) {
@@ -2723,23 +2661,6 @@ function populateCustomShuffleOptions() {
     const allGenresList = [...FIXED_GENRES, ...FIXED_OFFICIAL_GENRES];
     csGenre.innerHTML = '<option value="">すべて</option>' + allGenresList.map(g => `<option value="${g}">${g}</option>`).join('');
     if (allGenresList.includes(currentGenVal)) csGenre.value = currentGenVal;
-  }
-
-  const csMoods = document.getElementById('cs-moods-container');
-  if (csMoods) {
-    const allMoods = [];
-    songs.forEach(s => {
-      if (s.moods && Array.isArray(s.moods)) {
-        s.moods.forEach(m => { if (m) allMoods.push(m); });
-      }
-    });
-    const uniqueMoods = [...new Set(allMoods)].sort();
-    const checkedMoods = Array.from(csMoods.querySelectorAll('input:checked')).map(el => el.value);
-    csMoods.innerHTML = uniqueMoods.map(m => `
-      <label style="display:inline-block; margin-right:10px;">
-        <input type="checkbox" value="${m}" ${checkedMoods.includes(m) ? 'checked' : ''}> ${m}
-      </label>
-    `).join('');
   }
 
   const csGenerations = document.getElementById('cs-generations-container');
@@ -2794,14 +2715,6 @@ function generateCustomShuffle() {
   const genre = document.getElementById('cs-genre').value;
   if (genre) {
     filtered = filtered.filter(s => s.genres && s.genres.includes(genre));
-  }
-
-  const checkedMoods = Array.from(document.querySelectorAll('#cs-moods-container input:checked')).map(el => el.value);
-  if (checkedMoods.length > 0) {
-    filtered = filtered.filter(s => {
-      if (!s.moods || !Array.isArray(s.moods)) return false;
-      return checkedMoods.some(m => s.moods.includes(m));
-    });
   }
 
   const checkedGens = Array.from(document.querySelectorAll('#cs-generations-container input:checked')).map(el => parseInt(el.value));
