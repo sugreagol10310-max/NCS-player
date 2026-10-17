@@ -250,7 +250,7 @@
                 <button onclick="toggleEditSongForm()" style="font-size: 11px; padding: 3px 6px;">✎ 編集</button>
               </div>
               <div style="margin-top: 2px;">ジャンル: <span id="display-genre">-</span></div>
-              <div style="margin-top: 2px; display: none;">ムード: <span id="display-mood">-</span></div>
+              <div style="margin-top: 2px;">ムード: <span id="display-mood">-</span></div>
               <div style="margin-top: 2px;">世代: <span id="display-generation" class="rank-generation-tag">-</span></div>
               <div style="margin-top: 4px;">
                 再生数: <span id="display-plays">0</span>回 | 
@@ -267,7 +267,7 @@
             <div style="margin-top: 4px;">ジャンル (複数選択):
               <div id="edit-genre-checkboxes" style="max-height: 120px; overflow-y: auto; background: #2a2a2a; border: 1px solid #444; padding: 6px; border-radius: 4px; margin-top: 4px; display: flex; flex-direction: column; gap: 4px;"></div>
             </div>
-            <div style="margin-top: 4px; display: none;">ムード: <input type="text" id="edit-mood-input" placeholder="例: Chill, Happy (カンマ区切り)" style="width: 60%;"></div>
+            <div style="margin-top: 4px;">ムード: <input type="text" id="edit-mood-input" placeholder="例: Chill, Happy (カンマ区切り)" style="width: 60%;"></div>
             <div style="margin-top: 4px;">世代: <input type="number" id="edit-generation-input" placeholder="例: 1 (数字のみ)" style="width: 60%;"></div>
             <div style="margin-top: 6px;">
               <button onclick="saveSongEdit()">💾 保存</button>
@@ -462,7 +462,7 @@
           <option value="">すべて</option>
         </select>
       </div>
-      <div style="background: #2a2a2a; padding: 10px; border-radius: 4px; min-width: 200px; flex-grow: 1; display: none;">
+      <div style="background: #2a2a2a; padding: 10px; border-radius: 4px; min-width: 200px; flex-grow: 1;">
         <label style="font-size:12px; color:#00ffcc; font-weight:bold;">ムード (複数選択可)</label><br>
         <div id="cs-moods-container" style="max-height: 80px; overflow-y: auto; background: #121212; border: 1px solid #444; padding: 5px; border-radius: 4px;">
         </div>
@@ -1994,6 +1994,7 @@ function toggleEditSongForm() {
     if (!song) return;
     document.getElementById('edit-title-input').value = song.title;
     document.getElementById('edit-ytid-input').value = song.youtubeId;
+    document.getElementById('edit-mood-input').value = (song.moods && song.moods.length) ? song.moods.join(', ') : '';
     buildGenreCheckboxesHTML('edit-genre-checkboxes', song.genres || []);
     document.getElementById('edit-generation-input').value = (song.generation !== null && song.generation !== undefined && !isNaN(song.generation)) ? song.generation : '';
     form.style.display = 'block';
@@ -2013,6 +2014,8 @@ function saveSongEdit() {
   let newYtidInput = document.getElementById('edit-ytid-input').value.trim();
   const newGenres = getSelectedGenresFromCheckboxes('edit-genre-checkboxes');
   const rawGen = document.getElementById('edit-generation-input').value.trim();
+  const rawMood = document.getElementById('edit-mood-input').value.trim();
+  const newMoods = rawMood ? rawMood.split(',').map(m => m.trim()).filter(Boolean) : [];
 
   if (!newTitle || !newYtidInput) return showToast('曲名と動画URLを入力してください');
 
@@ -2410,6 +2413,8 @@ function addNewSong() {
   const selectedGenres = getSelectedGenresFromCheckboxes('input-genre-checkboxes');
   const genInput = document.getElementById('input-generation');
   const yearInput = document.getElementById('input-year');
+  const rawMood = document.getElementById('input-mood').value.trim();
+  const newMoods = rawMood ? rawMood.split(',').map(m => m.trim()).filter(Boolean) : [];
 
   if (!titleInput.value.trim() || !ytidInput) return showToast('入力してください');
 
@@ -2427,7 +2432,7 @@ function addNewSong() {
     youtubeId: ytidInput,
     title: titleInput.value.trim(),
     genres: selectedGenres,
-    moods: [],
+    moods: newMoods,
     generation: parsedGen,
     year: parseInt(yearInput.value) || 2024,
     tier: rankToTierCode(insertIndex + 1),
