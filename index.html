@@ -147,13 +147,16 @@
       min-width: 0;
     }
 
-    .rank-genre-tag {
+    .rank-genre-tag,
+    .rank-mood-tag {
       background: #234040;
       color: #7fffd4;
       padding: 1px 5px;
       border-radius: 3px;
       font-size: 11px;
       display: inline-block;
+      line-height: 1.4;
+      vertical-align: middle;
     }
     .rank-generation-tag {
       background: #402330;
@@ -601,8 +604,53 @@ function getGenreStyle(genre) {
 }
 
 function getMoodStyle(mood) {
-  // ムード用の背景色と文字色を返す関数（ここではシンプルにダークグレーと白を指定）
+  // ムード色は単色に統一し、Genreタグと同じ形で表示する。
   return { bg: '#444444', text: '#ffffff' };
+}
+
+// Firebaseでは配列が数値キーのオブジェクトとして返る場合もあるため、
+// 配列・カンマ区切り文字列・オブジェクトのいずれも同じ形式にそろえる。
+function normalizeMoodList(moods) {
+  let items = [];
+  if (Array.isArray(moods)) {
+    items = moods;
+  } else if (typeof moods === 'string') {
+    items = moods.split(',');
+  } else if (moods && typeof moods === 'object') {
+    const entries = Object.entries(moods);
+    const stringValues = entries.every(([, value]) => typeof value === 'string' || value == null);
+    if (stringValues) {
+      items = entries
+        .sort(([a], [b]) => /^\d+$/.test(a) && /^\d+$/.test(b) ? Number(a) - Number(b) : a.localeCompare(b))
+        .map(([, value]) => value);
+    } else {
+      // { MoodName: true } のような集合形式にも対応する。
+      items = entries.filter(([, value]) => value === true || value === 1).map(([key]) => key);
+    }
+  }
+
+  const normalized = [];
+  items.forEach(value => {
+    if (value === null || value === undefined) return;
+    String(value).split(',').forEach(part => {
+      const mood = part.trim();
+      if (mood && !normalized.includes(mood)) normalized.push(mood);
+    });
+  });
+  return normalized;
+}
+
+function escapeMoodText(value) {
+  return String(value).replace(/[&<>\"']/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;'
+  }[char]));
+}
+
+function renderMoodTagsHTML(moods, separator = ' ') {
+  return normalizeMoodList(moods).map(mood => {
+    const style = getMoodStyle(mood);
+    return `<span class="rank-mood-tag" style="background-color: ${style.bg}; color: ${style.text};">${escapeMoodText(mood)}</span>`;
+  }).join(separator);
 }
 
 function buildGenreCheckboxesHTML(containerId, selectedGenres = []) {
@@ -915,13 +963,10 @@ songsRef.on('value', (snapshot) => {
         songGenres = [s.genre];
       }
 
-      let songMoods = [];
-      if (Array.isArray(s.moods)) {
-        songMoods = s.moods;
-      } else if (typeof s.moods === 'string' && s.moods.trim()) {
-        songMoods = s.moods.split(',').map(m => m.trim()).filter(Boolean);
-      } else if (s.mood) {
-        songMoods = s.mood.split(',').map(m => m.trim()).filter(Boolean);
+      let songMoods = normalizeMoodList(s.moods);
+      // 古いデータで moods が未設定・空の場合は、単数形 mood も読み取る。
+      if (songMoods.length === 0 && s.mood) {
+        songMoods = normalizeMoodList(s.mood);
       }
 
       return {
@@ -1706,6 +1751,7 @@ function computeAndRenderRecommendations() {
       const st = getGenreStyle(g);
       return `<span class="rank-genre-tag" style="background-color:${st.bg}; color:${st.text};">${g}</span>`;
     }).join('') : '';
+    const moodsHtml = renderMoodTagsHTML(i.moods, '');
 
     return `
       <li class="rank-item" onclick="selectSongById('${i.id}')">
@@ -1719,6 +1765,7 @@ function computeAndRenderRecommendations() {
           </div>
           <div class="rank-sub-row">
             ${genresHtml}
+            ${moodsHtml}
           </div>
         </div>
         <span style="font-size:12px; color:${isPositive ? '#00ffcc' : '#ff8888'}; margin-right:8px; white-space:nowrap;">
@@ -1959,11 +2006,9 @@ function updateTrackInfoDisplay() {
     }
 
     const moodSpan = document.getElementById('display-mood');
-    if (song.moods && song.moods.length > 0) {
-      moodSpan.innerHTML = song.moods.map(m => {
-        const style = getMoodStyle(m);
-        return `<span class="rank-mood-tag" style="background-color: ${style.bg}; color: ${style.text};">${m}</span>`;
-      }).join(' ');
+    const moodTagsHtml = renderMoodTagsHTML(song.moods);
+    if (moodTagsHtml) {
+      moodSpan.innerHTML = moodTagsHtml;
     } else {
       moodSpan.innerText = '-';
     }
@@ -2262,6 +2307,7 @@ function renderRankingUI() {
         return `<span class="rank-genre-tag" style="background-color: ${st.bg}; color: ${st.text};">${g}</span>`;
       }).join('');
     }
+    const moodsHtml = renderMoodTagsHTML(song.moods, '');
     
     let generationHtml = '';
     if (song.generation !== null && song.generation !== undefined && !isNaN(song.generation)) {
@@ -2284,6 +2330,7 @@ function renderRankingUI() {
         <div class="rank-sub-row">
           ${generationHtml}
           ${genresHtml}
+          ${moodsHtml}
         </div>
       </div>
 
