@@ -88,7 +88,19 @@
       font-size: 12px;
       margin-right: 10px;
     }
-    .rank-name { flex-grow: 1; font-weight: bold; white-space: nowrap; overflow: hidden; min-width: 0; }
+    /* 曲名表示：2行まで許可し、溢れる場合は自動調整 */
+    .rank-name {
+      flex-grow: 1;
+      font-weight: bold;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      word-break: break-all;
+      min-width: 0;
+      line-height: 1.3;
+      max-height: 2.6em;
+    }
     .rank-main-info { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; overflow: hidden; }
     .rank-del-btn { background: #ff4444; color: #fff; padding: 2px 6px; font-size: 10px; }
     .rank-move-btn { background: #555; color: #fff; padding: 2px 7px; font-size: 12px; margin-right: 2px; }
@@ -202,7 +214,7 @@
                 <strong>曲名:</strong> <span id="display-title">-</span>
                 <button onclick="toggleEditSongForm()" style="font-size: 11px; padding: 3px 6px;">✎ 編集</button>
               </div>
-              <div>ジャンル: <span id="display-genre" class="rank-genre-tag">-</span></div>
+              <div style="margin-top: 2px;">ジャンル: <span id="display-genre">-</span></div>
               <div style="margin-top: 2px;">ムード: <span id="display-mood">-</span></div>
               <div style="margin-top: 2px;">世代: <span id="display-generation" class="rank-generation-tag">-</span></div>
               <div style="margin-top: 4px;">
@@ -217,7 +229,9 @@
           <div id="edit-song-form" style="display:none; margin-top: 8px; padding: 8px; background: #1a1a1a; border-radius: 4px;">
             <div>曲名: <input type="text" id="edit-title-input" style="width: 60%;"></div>
             <div style="margin-top: 4px;">動画URL/ID: <input type="text" id="edit-ytid-input" placeholder="YouTube ID または URL" style="width: 60%;"></div>
-            <div style="margin-top: 4px;">ジャンル: <input type="text" id="edit-genre-input" placeholder="例: Electronic" style="width: 60%;"></div>
+            <div style="margin-top: 4px;">ジャンル (複数選択):
+              <div id="edit-genre-checkboxes" style="max-height: 120px; overflow-y: auto; background: #2a2a2a; border: 1px solid #444; padding: 6px; border-radius: 4px; margin-top: 4px; display: flex; flex-direction: column; gap: 4px;"></div>
+            </div>
             <div style="margin-top: 4px;">ムード: <input type="text" id="edit-mood-input" placeholder="例: Chill, Happy (カンマ区切り)" style="width: 60%;"></div>
             <div style="margin-top: 4px;">世代: <input type="number" id="edit-generation-input" placeholder="例: 1 (数字のみ)" style="width: 60%;"></div>
             <div style="margin-top: 6px;">
@@ -447,28 +461,13 @@
       <button onclick="saveTierSettings()">💾 Tier設定を保存</button>
     </div>
 
-    <h3 style="margin-top: 20px;">🎨 ジャンル別カラー設定</h3>
-    <p style="font-size: 12px; color: #888;">
-      ジャンルごとにタグの背景色を設定できます。
-    </p>
-    <div id="genre-color-settings"></div>
-    <div style="margin-top: 10px;">
-      <button onclick="saveGenreColors()">💾 ジャンルカラー設定を保存</button>
-    </div>
-
-    <h3 style="margin-top: 20px;">🎭 ムード別カラー設定</h3>
-    <p style="font-size: 12px; color: #888;">
-      ムードごとにタグの背景色を設定できます（文字色は自動調整されます）。
-    </p>
-    <div id="mood-color-settings"></div>
-    <div style="margin-top: 10px;">
-      <button onclick="saveMoodColors()">💾 ムードカラー設定を保存</button>
-    </div>
-
     <h3 style="margin-top: 20px;">➕ 新規曲追加</h3>
     <input type="text" id="input-title" placeholder="曲名">
     <input type="text" id="input-ytid" placeholder="YouTube ID または URL">
-    <input type="text" id="input-genre" placeholder="ジャンル (空欄可)">
+    <div style="margin: 4px 0;">
+      <label style="font-size: 13px; color: #aaa;">ジャンル (複数選択):</label>
+      <div id="input-genre-checkboxes" style="max-height: 120px; overflow-y: auto; background: #2a2a2a; border: 1px solid #444; padding: 6px; border-radius: 4px; margin-top: 4px; display: flex; flex-direction: column; gap: 4px;"></div>
+    </div>
     <input type="text" id="input-mood" placeholder="ムード (カンマ区切り、空欄可)">
     <input type="number" id="input-generation" placeholder="世代 (数字、空欄可)">
     <input type="number" id="input-year" placeholder="リリース年 (例: 2024)" value="2024">
@@ -486,6 +485,110 @@
 </div>
 
 <script>
+// --------------------------------------------------
+// 🎨 固定ジャンル・公式ジャンル及びカラーの定義
+// --------------------------------------------------
+const FIXED_GENRES = [
+  "Angelcore", "Funk", "Phonk", "DnB", "Drumstep", "Dubstep", "Brostep",
+  "Chillstep", "Melodic Dubstep", "Future Bass", "Glitch Hop", "Hardcore",
+  "Hardstyle", "House", "Festival Progressive / Melodic House", "Electro House",
+  "Complextro", "Future / Deep / Bass House", "Moombahcore", "Pop",
+  "Synthwave", "Trance", "Trap", "Witch House"
+];
+
+const FIXED_OFFICIAL_GENRES = [
+  "NCS-Red", "NCS-Orange", "NCS-Yellow", "NCS-Green", "NCS-Mint",
+  "NCS-Cyan", "NCS-Blue", "NCS-Purple", "NCS-Magenta", "NCS-Teal",
+  "NCS-Lavender", "NCS-White", "NCS-Black", "NCS-Mauve",
+  "Monstercat", "Trap Nation", "Others"
+];
+
+const ALL_GENRES_AND_COLORS = {
+  "Angelcore": "#ffffff",
+  "Funk": "#008080",
+  "Phonk": "#008080",
+  "DnB": "#ff00ff",
+  "Drumstep": "#ff0000",
+  "Dubstep": "#0000ff",
+  "Brostep": "#00053a",
+  "Chillstep": "#00ffff",
+  "Melodic Dubstep": "#00ffff",
+  "Future Bass": "#cab8d9",
+  "Glitch Hop": "#90CE9C",
+  "Hardcore": "#ffffff",
+  "Hardstyle": "#ffffff",
+  "House": "#ffff00",
+  "Festival Progressive / Melodic House": "#ffff00",
+  "Electro House": "#ffff00",
+  "Complextro": "#666633",
+  "Future / Deep / Bass House": "#7f1184",
+  "Moombahcore": "#010066",
+  "Pop": "#ffffff",
+  "Synthwave": "#ff681f",
+  "Trance": "#ffffff",
+  "Trap": "#00ff00",
+  "Witch House": "#ffffff",
+  // 公式ジャンル
+  "NCS-Red": "#ff0000",
+  "NCS-Orange": "#ff681f",
+  "NCS-Yellow": "#ffff00",
+  "NCS-Green": "#00ff00",
+  "NCS-Mint": "#90ce9c",
+  "NCS-Cyan": "#00ffff",
+  "NCS-Blue": "#0000ff",
+  "NCS-Purple": "#7f1184",
+  "NCS-Magenta": "#ff00ff",
+  "NCS-Teal": "#008080",
+  "NCS-Lavender": "#cab8d9",
+  "NCS-White": "#ffffff",
+  "NCS-Black": "#000000",
+  "NCS-Mauve": "#C4A4A3",
+  "Monstercat": "#aaaaaa",
+  "Trap Nation": "#aaaaaa",
+  "Others": "#aaaaaa"
+};
+
+function getContrastColor(hexColor) {
+  if (!hexColor || hexColor.length !== 7) return '#ffffff';
+  const r = parseInt(hexColor.substr(1, 2), 16);
+  const g = parseInt(hexColor.substr(3, 2), 16);
+  const b = parseInt(hexColor.substr(5, 2), 16);
+  const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+  return (yiq >= 128) ? '#000000' : '#ffffff';
+}
+
+function getGenreStyle(genre) {
+  const bgColor = ALL_GENRES_AND_COLORS[genre] || '#444444';
+  return { bg: bgColor, text: getContrastColor(bgColor) };
+}
+
+// フォーム等にジャンルのチェックボックスリストを生成するヘルパー
+function buildGenreCheckboxesHTML(containerId, selectedGenres = []) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  let html = '<div style="font-size:11px; color:#aaa; margin-bottom:2px; font-weight:bold;">[通常ジャンル]</div>';
+  FIXED_GENRES.forEach(g => {
+    const checked = selectedGenres.includes(g) ? 'checked' : '';
+    html += `<label style="display:inline-block; margin-right:12px; margin-bottom:2px;"><input type="checkbox" name="${containerId}-cb" value="${g}" ${checked}> ${g}</label>`;
+  });
+
+  html += '<div style="font-size:11px; color:#aaa; margin-top:6px; margin-bottom:2px; font-weight:bold;">[公式ジャンル]</div>';
+  FIXED_OFFICIAL_GENRES.forEach(g => {
+    const checked = selectedGenres.includes(g) ? 'checked' : '';
+    html += `<label style="display:inline-block; margin-right:12px; margin-bottom:2px;"><input type="checkbox" name="${containerId}-cb" value="${g}" ${checked}> ${g}</label>`;
+  });
+
+  container.innerHTML = html;
+}
+
+function getSelectedGenresFromCheckboxes(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return [];
+  const checked = container.querySelectorAll(`input[name="${containerId}-cb"]:checked`);
+  return Array.from(checked).map(el => el.value);
+}
+
 // --------------------------------------------------
 // 🍞 トースト通知
 // --------------------------------------------------
@@ -508,28 +611,24 @@ let lastStaminaCheckTime = Date.now();
 let holidays = {};
 fetch('https://holidays-jp.github.io/api/v1/date.json')
   .then(res => res.json())
-  .then(data => {
-    holidays = data;
-  })
+  .then(data => { holidays = data; })
   .catch(err => console.error("祝日データの取得に失敗しました", err));
 
 function isStaminaRestrictedTime() {
   const now = new Date();
-  const day = now.getDay(); // 0: 日, 1: 月, ..., 5: 金, 6: 土
-  if (day === 0 || day === 6) return false; // 土日は制限外
+  const day = now.getDay();
+  if (day === 0 || day === 6) return false;
   
-  // 祝日判定
   const yyyy = now.getFullYear();
   const mm = String(now.getMonth() + 1).padStart(2, '0');
   const dd = String(now.getDate()).padStart(2, '0');
   const dateStr = `${yyyy}-${mm}-${dd}`;
-  if (holidays[dateStr]) return false; // 祝日は制限外
+  if (holidays[dateStr]) return false;
 
   const hours = now.getHours();
   const minutes = now.getMinutes();
   const seconds = now.getSeconds();
   
-  // 平日 5:00〜16:00, 17:00〜20:00, 21:00〜4:00
   if (hours >= 21 || hours < 4) return true;
   if (hours >= 5 && hours < 16) return true;
   if (hours >= 17 && hours < 20) return true;
@@ -553,7 +652,7 @@ function saveStaminaState() {
 function updateStamina() {
   const now = Date.now();
   const elapsedMs = now - lastStaminaCheckTime;
-  const intervalMs = 30 * 60 * 1000; // 30分
+  const intervalMs = 30 * 60 * 1000;
   if (elapsedMs >= intervalMs) {
     const intervals = Math.floor(elapsedMs / intervalMs);
     staminaSeconds = Math.min(30 * 60, staminaSeconds + intervals * 5 * 60);
@@ -577,7 +676,7 @@ loadStaminaState();
 setInterval(updateStamina, 1000);
 
 // --------------------------------------------------
-// 🔥 ティア設定マスター定義 (順位基準版: 何位以下かを指定)
+// 🔥 ティア設定マスター定義
 // --------------------------------------------------
 let TIER_DEFINITIONS = [
   { code: "SSSS", name: "GOAT", maxRank: 1 },
@@ -625,17 +724,6 @@ function rankToTierCode(rank) {
   return "K";
 }
 
-function getMinRankForTier(tierCode) {
-  let prevMax = 0;
-  for (let t of TIER_DEFINITIONS) {
-    if (t.code === tierCode) {
-      return prevMax + 1;
-    }
-    prevMax = t.maxRank;
-  }
-  return 1;
-}
-
 // --------------------------------------------------
 // 🔥 Firebase設定
 // --------------------------------------------------
@@ -653,8 +741,6 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const songsRef = db.ref('music_chart/songs');
 const historyRef = db.ref('music_chart/daily_history');
-const genreColorsRef = db.ref('music_chart/genre_colors');
-const moodColorsRef = db.ref('music_chart/mood_colors');
 const tierDefinitionsRef = db.ref('music_chart/tier_definitions');
 
 // --------------------------------------------------
@@ -793,11 +879,20 @@ songsRef.on('value', (snapshot) => {
         totalWatchTime = Math.round(duration * 0.5 * effectivePlays);
       }
 
-      // 論理的最長視聴時間のチェック・初期化
       let logicalMaxWatchTime = s.logicalMaxWatchTime;
       if (logicalMaxWatchTime === undefined || logicalMaxWatchTime === null) {
         logicalMaxWatchTime = playCount * duration;
         needsSaveCheck = true;
+      }
+
+      // ジャンル複数選択のマイグレーション対応
+      let songGenres = [];
+      if (Array.isArray(s.genres)) {
+        songGenres = s.genres;
+      } else if (typeof s.genres === 'string' && s.genres.trim()) {
+        songGenres = s.genres.split(',').map(g => g.trim()).filter(Boolean);
+      } else if (s.genre) {
+        songGenres = [s.genre];
       }
 
       let songMoods = [];
@@ -819,7 +914,7 @@ songsRef.on('value', (snapshot) => {
         totalWatchTime: totalWatchTime,
         logicalMaxWatchTime: logicalMaxWatchTime,
         tier: rankToTierCode(idx + 1),
-        genre: s.genre || 'ジャンル不明',
+        genres: songGenres,
         moods: songMoods,
         generation: s.generation !== undefined && s.generation !== null ? parseInt(s.generation) : null,
         order: s.order !== undefined ? s.order : idx
@@ -839,8 +934,7 @@ songsRef.on('value', (snapshot) => {
   renderRankingUI();
   updateTrackInfoDisplay();
   checkAndSaveDailyHistory();
-  renderGenreColorSettingsUI();
-  renderMoodColorSettingsUI();
+  buildGenreCheckboxesHTML('input-genre-checkboxes', []);
 
   if (isInitialLoad && currentPlaylist.length > 0) {
     isInitialLoad = false;
@@ -948,7 +1042,7 @@ function saveDailySnapshot(dateStr) {
       duration: song.duration,
       retentionRate: Math.round(getRetentionRate(song)),
       tier: song.tier,
-      genre: song.genre || 'ジャンル不明',
+      genres: song.genres || [],
       moods: song.moods || [],
       generation: song.generation !== undefined ? song.generation : null,
       order: song.order,
@@ -1108,7 +1202,7 @@ function getSongsRankingAtDate(dateStr, rankType = 'favorite') {
       id: s.id,
       title: s.title,
       tier: s.tier,
-      genre: s.genre || 'ジャンル不明',
+      genres: s.genres || [],
       moods: s.moods || [],
       favoriteOrder: s.order,
       playCount: s.playCount || 0,
@@ -1125,7 +1219,7 @@ function getSongsRankingAtDate(dateStr, rankType = 'favorite') {
         id,
         title: snap.title,
         tier: snap.tier,
-        genre: snap.genre || 'ジャンル不明',
+        genres: snap.genres || [],
         moods: snap.moods || [],
         favoriteOrder: (snap.rank || 9999) - 1,
         playCount: snap.playCount || 0,
@@ -1300,13 +1394,14 @@ function renderAnalyticsTable() {
 
     tableBody.innerHTML = '';
     ranking.forEach(item => {
+      const genresStr = (item.genres && item.genres.length > 0) ? item.genres.join(', ') : '-';
       const tr = document.createElement('tr');
       tr.style.borderBottom = '1px solid #333';
       tr.innerHTML = `
         <td style="padding: 8px; text-align: center; color: #ffaa00; font-weight: bold;">${item.rank}</td>
         <td style="padding: 8px; font-weight: bold;">${item.title}</td>
         <td style="padding: 8px; text-align: center;">${item.tier}</td>
-        <td style="padding: 8px; text-align: center; color: #7fffd4;">${item.genre}</td>
+        <td style="padding: 8px; text-align: center; color: #7fffd4; font-size:12px;">${genresStr}</td>
         <td style="padding: 8px; text-align: center; color: #888;">${item.playCount}回</td>
         <td style="padding: 8px; text-align: center; color: #888;">${Math.round(item.totalWatchTime / 60)}分</td>
         <td style="padding: 8px; text-align: center; color: #888;">${item.retentionRate}%</td>
@@ -1414,7 +1509,8 @@ function exportAnalyticsCSV() {
   if (simpleMode) {
     let csvContent = `順位,曲名,Tier,ジャンル,再生回数,総再生時間(分),維持率\n`;
     analyticsCalculatedData.forEach(item => {
-      csvContent += `${item.rank},"${item.title.replace(/"/g, '""')}",${item.tier},${item.genre},${item.playCount},${Math.round(item.totalWatchTime / 60)},${item.retentionRate}\n`;
+      const genresStr = (item.genres && item.genres.length > 0) ? `"${item.genres.join(', ')}"` : '';
+      csvContent += `${item.rank},"${item.title.replace(/"/g, '""')}",${item.tier},${genresStr},${item.playCount},${Math.round(item.totalWatchTime / 60)},${item.retentionRate}\n`;
     });
     downloadCSV(csvContent, `ranking_${endDate}.csv`);
     return;
@@ -1452,7 +1548,8 @@ function exportTrendCSV() {
   let csvContent = `曲名,Tier,ジャンル,${targetDates.join(',')}\n`;
 
   songs.forEach(song => {
-    let row = `"${song.title.replace(/"/g, '""')}",${song.tier},${song.genre || 'ジャンル不明'}`;
+    const genresStr = (song.genres && song.genres.length > 0) ? song.genres.join(', ') : '';
+    let row = `"${song.title.replace(/"/g, '""')}",${song.tier},"${genresStr}"`;
     
     targetDates.forEach(dateStr => {
       const data = getSongSnapshotData(dateStr, song, dateStr === todayStr);
@@ -1591,7 +1688,7 @@ function computeAndRenderRecommendations() {
     const engRank = engagementRankMap[s.id];
     const recentPlays = get3DaysPlayCount(s);
     return {
-      id: s.id, title: s.title, tier: s.tier, genre: s.genre || 'ジャンル不明', moods: s.moods || [],
+      id: s.id, title: s.title, tier: s.tier, genres: s.genres || [], moods: s.moods || [],
       youtubeId: s.youtubeId, favRank, engRank, gap: favRank - engRank, recentPlays
     };
   });
@@ -1600,12 +1697,16 @@ function computeAndRenderRecommendations() {
   const overrated = items.filter(i => i.gap < 0).sort((a, b) => a.gap - b.gap).slice(0, 8);
 
   const renderGroup = (list, isPositive) => list.map(i => {
-    const style = getGenreStyle(i.genre);
+    const genresHtml = (i.genres && i.genres.length > 0) ? i.genres.map(g => {
+      const st = getGenreStyle(g);
+      return `<span class="rank-genre-tag" style="background-color:${st.bg}; color:${st.text};">${g}</span>`;
+    }).join('') : '';
+
     return `
       <li class="rank-item" onclick="selectSongById('${i.id}')">
         <img src="https://i.ytimg.com/vi/${i.youtubeId}/default.jpg" class="rank-thumb" loading="lazy" alt="">
         <span class="rank-tier-tag">${i.tier}</span>
-        <span class="rank-genre-tag" style="background-color:${style.bg}; color:${style.text};">${i.genre}</span>
+        ${genresHtml}
         <span class="rank-name">${i.title}</span>
         <span style="font-size:12px; color:${isPositive ? '#00ffcc' : '#ff8888'}; margin-right:8px; white-space:nowrap;">
           好き度${i.favRank}位 / 直近3日再生数${i.engRank}位 (${i.recentPlays}回, ${i.gap > 0 ? '+' : ''}${i.gap})
@@ -1839,8 +1940,17 @@ function updateTrackInfoDisplay() {
   const song = currentPlaylist[currentIndex];
   if (song) {
     document.getElementById('display-title').innerText = song.title;
-    document.getElementById('display-genre').innerText = song.genre || 'ジャンル不明';
     
+    const genreSpan = document.getElementById('display-genre');
+    if (song.genres && song.genres.length > 0) {
+      genreSpan.innerHTML = song.genres.map(g => {
+        const st = getGenreStyle(g);
+        return `<span class="rank-genre-tag" style="background-color: ${st.bg}; color: ${st.text};">${g}</span>`;
+      }).join(' ');
+    } else {
+      genreSpan.innerText = '-';
+    }
+
     const moodSpan = document.getElementById('display-mood');
     if (song.moods && song.moods.length > 0) {
       moodSpan.innerHTML = song.moods.map(m => {
@@ -1880,7 +1990,7 @@ function toggleEditSongForm() {
     if (!song) return;
     document.getElementById('edit-title-input').value = song.title;
     document.getElementById('edit-ytid-input').value = song.youtubeId;
-    document.getElementById('edit-genre-input').value = (song.genre && song.genre !== 'ジャンル不明') ? song.genre : '';
+    buildGenreCheckboxesHTML('edit-genre-checkboxes', song.genres || []);
     document.getElementById('edit-mood-input').value = (song.moods && song.moods.length) ? song.moods.join(', ') : '';
     document.getElementById('edit-generation-input').value = (song.generation !== null && song.generation !== undefined && !isNaN(song.generation)) ? song.generation : '';
     form.style.display = 'block';
@@ -1898,7 +2008,7 @@ function saveSongEdit() {
 
   const newTitle = document.getElementById('edit-title-input').value.trim();
   let newYtidInput = document.getElementById('edit-ytid-input').value.trim();
-  const newGenre = document.getElementById('edit-genre-input').value.trim();
+  const newGenres = getSelectedGenresFromCheckboxes('edit-genre-checkboxes');
   const rawMood = document.getElementById('edit-mood-input').value.trim();
   const rawGen = document.getElementById('edit-generation-input').value.trim();
 
@@ -1918,14 +2028,14 @@ function saveSongEdit() {
 
   song.title = newTitle;
   song.youtubeId = newYtidInput;
-  song.genre = newGenre || 'ジャンル不明';
+  song.genres = newGenres;
   song.moods = newMoods;
   song.generation = newGen;
 
   db.ref(`music_chart/songs/${song.id}`).update({ 
     title: song.title, 
     youtubeId: song.youtubeId,
-    genre: song.genre,
+    genres: song.genres,
     moods: song.moods,
     generation: song.generation
   });
@@ -2071,7 +2181,7 @@ function startSeekBarUpdater() {
 }
 
 // --------------------------------------------------
-// ランキング表示（全モード・ジャンルTOP・ムードTOP・世代別対応）
+// ランキング表示
 // --------------------------------------------------
 function renderRankingUI() {
   if (currentMode === 'analytics' || currentMode === 'recommend') return;
@@ -2147,10 +2257,16 @@ function renderRankingUI() {
       `;
     }
 
-    const gStyle = getGenreStyle(song.genre);
+    let genresHtml = '';
+    if (song.genres && song.genres.length > 0) {
+      genresHtml = song.genres.map(g => {
+        const st = getGenreStyle(g);
+        return `<span class="rank-genre-tag" style="background-color: ${st.bg}; color: ${st.text}; border: none;">${g}</span>`;
+      }).join('');
+    }
     
     let moodsHtml = '';
-    if (isMoodTopMode && song.moods && song.moods.length > 0) {
+    if (song.moods && song.moods.length > 0) {
       moodsHtml = song.moods.map(m => {
         const mStyle = getMoodStyle(m);
         return `<span class="rank-mood-tag" style="background-color: ${mStyle.bg}; color: ${mStyle.text};">${m}</span>`;
@@ -2163,7 +2279,7 @@ function renderRankingUI() {
       <img src="https://i.ytimg.com/vi/${song.youtubeId}/default.jpg" class="rank-thumb" loading="lazy" alt="">
       <div class="rank-main-info">
       <span class="rank-tier-tag">${song.tier}</span>
-      <span class="rank-genre-tag" style="background-color: ${gStyle.bg}; color: ${gStyle.text}; border: none;">${song.genre || 'ジャンル不明'}</span>
+      ${genresHtml}
       ${moodsHtml}
       ${(song.generation !== null && song.generation !== undefined && !isNaN(song.generation)) ? `<span class="rank-generation-tag">第${song.generation}世代</span>` : ''}
       <span class="rank-name">${song.title}</span>
@@ -2174,7 +2290,7 @@ function renderRankingUI() {
         : `<button class="rank-del-btn" onclick="deleteSong('${song.id}', event)">✕</button>`}
     `;
     listEl.appendChild(li);
-    setTimeout(fitRankingText,0);
+    setTimeout(fitRankingText, 0);
   });
 
   fitRankingText();
@@ -2187,16 +2303,13 @@ function renderRankingUI() {
   }
 }
 
-// --------------------------------------------------
-// 曲の読み込み・切り替え
-// --------------------------------------------------
 function fitRankingText() {
   document.querySelectorAll('.rank-main-info').forEach(el => {
     const name = el.querySelector('.rank-name');
     if (!name) return;
     name.style.fontSize = '16px';
     let size = 16;
-    while (el.scrollWidth > el.clientWidth && size > 9) {
+    while (el.scrollHeight > el.clientHeight && size > 9) {
       size -= 1;
       name.style.fontSize = size + 'px';
     }
@@ -2318,7 +2431,7 @@ function addNewSong() {
 
   const titleInput = document.getElementById('input-title');
   let ytidInput = document.getElementById('input-ytid').value.trim();
-  const genreInput = document.getElementById('input-genre');
+  const selectedGenres = getSelectedGenresFromCheckboxes('input-genre-checkboxes');
   const moodInput = document.getElementById('input-mood');
   const genInput = document.getElementById('input-generation');
   const yearInput = document.getElementById('input-year');
@@ -2341,7 +2454,7 @@ function addNewSong() {
     id: newId,
     youtubeId: ytidInput,
     title: titleInput.value.trim(),
-    genre: (genreInput && genreInput.value.trim()) || 'ジャンル不明',
+    genres: selectedGenres,
     moods: parsedMoods,
     generation: parsedGen,
     year: parseInt(yearInput.value) || 2024,
@@ -2358,7 +2471,7 @@ function addNewSong() {
 
   titleInput.value = '';
   document.getElementById('input-ytid').value = '';
-  if (genreInput) genreInput.value = '';
+  buildGenreCheckboxesHTML('input-genre-checkboxes', []);
   if (moodInput) moodInput.value = '';
   if (genInput) genInput.value = '';
   showToast('曲を追加しました');
@@ -2390,14 +2503,21 @@ function importData(event) {
       const importedSongs = JSON.parse(e.target.result);
       if (Array.isArray(importedSongs)) {
         if (confirm(`現在のデータを上書きし、${importedSongs.length}曲をFirebaseへ一括登録しますか？`)) {
-          songs = importedSongs.map((s, idx) => ({
-            ...s,
-            tier: rankToTierCode(idx + 1),
-            moods: Array.isArray(s.moods) ? s.moods : (s.mood ? s.mood.split(',').map(m=>m.trim()).filter(Boolean) : []),
-            generation: s.generation !== undefined && s.generation !== null ? parseInt(s.generation) : null,
-            logicalMaxWatchTime: s.logicalMaxWatchTime !== undefined ? s.logicalMaxWatchTime : ((s.playCount || 0) * (s.duration || 200)),
-            order: idx
-          }));
+          songs = importedSongs.map((s, idx) => {
+            let songGenres = [];
+            if (Array.isArray(s.genres)) songGenres = s.genres;
+            else if (s.genre) songGenres = [s.genre];
+
+            return {
+              ...s,
+              tier: rankToTierCode(idx + 1),
+              genres: songGenres,
+              moods: Array.isArray(s.moods) ? s.moods : (s.mood ? s.mood.split(',').map(m=>m.trim()).filter(Boolean) : []),
+              generation: s.generation !== undefined && s.generation !== null ? parseInt(s.generation) : null,
+              logicalMaxWatchTime: s.logicalMaxWatchTime !== undefined ? s.logicalMaxWatchTime : ((s.playCount || 0) * (s.duration || 200)),
+              order: idx
+            };
+          });
           saveAllToFirebase();
           showToast('Firebaseへのデータ復元完了！');
         }
@@ -2410,208 +2530,14 @@ function importData(event) {
 }
 
 // --------------------------------------------------
-// 🎨 カラー設定 UI & 判定処理
+// 🎭 ムードカラー設定
 // --------------------------------------------------
-function getContrastColor(hexColor) {
-  if (!hexColor || hexColor.length !== 7) return '#ffffff';
-  const r = parseInt(hexColor.substr(1, 2), 16);
-  const g = parseInt(hexColor.substr(3, 2), 16);
-  const b = parseInt(hexColor.substr(5, 2), 16);
-  const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
-  return (yiq >= 128) ? '#000000' : '#ffffff';
-}
-
-// --- ジャンルカラー ---
-let genreColors = {};
-genreColorsRef.on('value', (snapshot) => {
-  genreColors = snapshot.val() || {};
-  renderRankingUI();
-  renderGenreColorSettingsUI();
-});
-
-function renderGenreColorSettingsUI() {
-  const container = document.getElementById('genre-color-settings');
-  if (!container) return;
-
-  const currentInputs = {};
-  container.querySelectorAll('input[type="color"]').forEach(input => {
-    const genre = input.id.replace('g-bg-', '');
-    currentInputs[genre] = input.value;
-  });
-
-  const uniqueGenres = [...new Set(songs.map(s => s.genre).filter(g => g && g !== 'ジャンル不明'))].sort();
-
-  if (uniqueGenres.length === 0) {
-    container.innerHTML = '<div style="color:#888; font-size:12px;">登録されているジャンルがありません。</div>';
-    return;
-  }
-
-  let html = '<table style="margin-top: 5px; width: 100%; border-collapse: collapse;"><thead><tr><th style="text-align: left; padding: 6px;">ジャンル名</th><th style="padding: 6px;">タグ色</th><th style="padding: 6px;">プレビュー</th></tr></thead><tbody>';
-
-  uniqueGenres.forEach(genre => {
-    const savedSetting = genreColors[genre];
-    let defaultBg = (typeof savedSetting === 'object' && savedSetting.bg) ? savedSetting.bg : (typeof savedSetting === 'string' ? savedSetting : '#444444');
-    
-    if (currentInputs[genre] !== undefined) {
-      defaultBg = currentInputs[genre];
-    }
-
-    const previewText = getContrastColor(defaultBg);
-
-    html += `
-      <tr>
-        <td style="padding: 6px; font-weight: bold; border-bottom: 1px solid #333;">${genre}</td>
-        <td style="padding: 6px; text-align: center; border-bottom: 1px solid #333;">
-          <input type="color" id="g-bg-${genre}" value="${defaultBg}" onchange="previewGenreColor('${genre}')" style="cursor: pointer;">
-        </td>
-        <td style="padding: 6px; text-align: center; border-bottom: 1px solid #333;">
-          <span id="g-prev-${genre}" class="rank-genre-tag" style="background-color: ${defaultBg}; color: ${previewText}; border: none; display: inline-block;">
-            ${genre}
-          </span>
-        </td>
-      </tr>
-    `;
-  });
-
-  html += '</tbody></table>';
-  container.innerHTML = html;
-}
-
-function previewGenreColor(genre) {
-  const bg = document.getElementById(`g-bg-${genre}`).value;
-  const prev = document.getElementById(`g-prev-${genre}`);
-  if (prev) {
-    prev.style.backgroundColor = bg;
-    prev.style.color = getContrastColor(bg);
-  }
-}
-
-function saveGenreColors() {
-  const uniqueGenres = [...new Set(songs.map(s => s.genre).filter(g => g && g !== 'ジャンル不明'))];
-  const newGenreColors = { ...genreColors };
-
-  uniqueGenres.forEach(genre => {
-    const bgInput = document.getElementById(`g-bg-${genre}`);
-    if (bgInput) {
-      newGenreColors[genre] = { bg: bgInput.value };
-    }
-  });
-
-  genreColorsRef.set(newGenreColors, (error) => {
-    if (error) {
-      showToast('保存に失敗しました');
-    } else {
-      showToast('ジャンル別カラー設定を保存しました');
-      renderRankingUI(); 
-    }
-  });
-}
-
-function getGenreStyle(genre) {
-  if (!genre || genre === 'ジャンル不明' || !genreColors[genre] || !genreColors[genre].bg) {
-    return { bg: '#444', text: '#ffffff' }; 
-  }
-  const bgColor = genreColors[genre].bg;
-  return { bg: bgColor, text: getContrastColor(bgColor) };
-}
-
-// --- ムードカラー ---
 let moodColors = {};
+const moodColorsRef = db.ref('music_chart/mood_colors');
 moodColorsRef.on('value', (snapshot) => {
   moodColors = snapshot.val() || {};
   renderRankingUI();
-  renderMoodColorSettingsUI();
 });
-
-function renderMoodColorSettingsUI() {
-  const container = document.getElementById('mood-color-settings');
-  if (!container) return;
-
-  const currentInputs = {};
-  container.querySelectorAll('input[type="color"]').forEach(input => {
-    const mood = input.id.replace('m-bg-', '');
-    currentInputs[mood] = input.value;
-  });
-
-  const allMoods = [];
-  songs.forEach(s => {
-    if (s.moods && Array.isArray(s.moods)) {
-      s.moods.forEach(m => { if (m) allMoods.push(m); });
-    }
-  });
-  const uniqueMoods = [...new Set(allMoods)].sort();
-
-  if (uniqueMoods.length === 0) {
-    container.innerHTML = '<div style="color:#888; font-size:12px;">登録されているムードがありません。</div>';
-    return;
-  }
-
-  let html = '<table style="margin-top: 5px; width:100%; border-collapse: collapse;"><thead><tr><th style="text-align: left; padding: 6px;">ムード名</th><th style="padding: 6px;">タグ色</th><th style="padding: 6px;">プレビュー</th></tr></thead><tbody>';
-
-  uniqueMoods.forEach(mood => {
-    const savedSetting = moodColors[mood];
-    let defaultBg = (typeof savedSetting === 'object' && savedSetting.bg) ? savedSetting.bg : (typeof savedSetting === 'string' ? savedSetting : '#553355');
-    
-    if (currentInputs[mood] !== undefined) {
-      defaultBg = currentInputs[mood];
-    }
-
-    const previewText = getContrastColor(defaultBg);
-
-    html += `
-      <tr>
-        <td style="padding: 6px; font-weight: bold; border-bottom: 1px solid #333;">${mood}</td>
-        <td style="padding: 6px; text-align: center; border-bottom: 1px solid #333;">
-          <input type="color" id="m-bg-${mood}" value="${defaultBg}" onchange="previewMoodColor('${mood}')" style="cursor: pointer;">
-        </td>
-        <td style="padding: 6px; text-align: center; border-bottom: 1px solid #333;">
-          <span id="m-prev-${mood}" class="rank-mood-tag" style="background-color: ${defaultBg}; color: ${previewText}; border: none; display: inline-block;">
-            ${mood}
-          </span>
-        </td>
-      </tr>
-    `;
-  });
-
-  html += '</tbody></table>';
-  container.innerHTML = html;
-}
-
-function previewMoodColor(mood) {
-  const bg = document.getElementById(`m-bg-${mood}`).value;
-  const prev = document.getElementById(`m-prev-${mood}`);
-  if (prev) {
-    prev.style.backgroundColor = bg;
-    prev.style.color = getContrastColor(bg);
-  }
-}
-
-function saveMoodColors() {
-  const allMoods = [];
-  songs.forEach(s => {
-    if (s.moods && Array.isArray(s.moods)) {
-      s.moods.forEach(m => { if (m) allMoods.push(m); });
-    }
-  });
-  const uniqueMoods = [...new Set(allMoods)];
-  const newMoodColors = { ...moodColors };
-
-  uniqueMoods.forEach(mood => {
-    const bgInput = document.getElementById(`m-bg-${mood}`);
-    if (bgInput) {
-      newMoodColors[mood] = { bg: bgInput.value };
-    }
-  });
-
-  moodColorsRef.set(newMoodColors, (error) => {
-    if (error) {
-      showToast('保存に失敗しました');
-    } else {
-      showToast('ムード別カラー設定を保存しました');
-      renderRankingUI();
-    }
-  });
-}
 
 function getMoodStyle(mood) {
   if (!mood || !moodColors[mood] || !moodColors[mood].bg) {
@@ -2629,14 +2555,14 @@ function populateGenreSelect() {
   if (!select) return;
 
   const currentVal = select.value;
-  const uniqueGenres = [...new Set(songs.map(s => s.genre).filter(g => g && g !== 'ジャンル不明'))].sort();
+  const allGenresList = [...FIXED_GENRES, ...FIXED_OFFICIAL_GENRES];
   
-  select.innerHTML = uniqueGenres.map(g => `<option value="${g}">${g}</option>`).join('');
+  select.innerHTML = allGenresList.map(g => `<option value="${g}">${g}</option>`).join('');
 
-  if (currentVal && uniqueGenres.includes(currentVal)) {
+  if (currentVal && allGenresList.includes(currentVal)) {
     select.value = currentVal;
-  } else if (uniqueGenres.length > 0) {
-    select.value = uniqueGenres[0];
+  } else if (allGenresList.length > 0) {
+    select.value = allGenresList[0];
   }
 }
 
@@ -2648,7 +2574,7 @@ function updateGenreTopList() {
 
   if (!genre) return;
 
-  let filtered = songs.filter(s => s.genre === genre);
+  let filtered = songs.filter(s => s.genres && s.genres.includes(genre));
 
   if (sortType === 'favorite') {
     filtered.sort((a, b) => a.order - b.order);
@@ -2790,15 +2716,15 @@ function updateGenerationTopList() {
 }
 
 // --------------------------------------------------
-// 🔀 カスタムシャッフル関連機能（補完）
+// 🔀 カスタムシャッフル関連機能
 // --------------------------------------------------
 function populateCustomShuffleOptions() {
   const csGenre = document.getElementById('cs-genre');
   if (csGenre) {
     const currentGenVal = csGenre.value;
-    const uniqueGenres = [...new Set(songs.map(s => s.genre).filter(g => g && g !== 'ジャンル不明'))].sort();
-    csGenre.innerHTML = '<option value="">すべて</option>' + uniqueGenres.map(g => `<option value="${g}">${g}</option>`).join('');
-    if (uniqueGenres.includes(currentGenVal)) csGenre.value = currentGenVal;
+    const allGenresList = [...FIXED_GENRES, ...FIXED_OFFICIAL_GENRES];
+    csGenre.innerHTML = '<option value="">すべて</option>' + allGenresList.map(g => `<option value="${g}">${g}</option>`).join('');
+    if (allGenresList.includes(currentGenVal)) csGenre.value = currentGenVal;
   }
 
   const csMoods = document.getElementById('cs-moods-container');
@@ -2869,7 +2795,7 @@ function generateCustomShuffle() {
 
   const genre = document.getElementById('cs-genre').value;
   if (genre) {
-    filtered = filtered.filter(s => s.genre === genre);
+    filtered = filtered.filter(s => s.genres && s.genres.includes(genre));
   }
 
   const checkedMoods = Array.from(document.querySelectorAll('#cs-moods-container input:checked')).map(el => el.value);
