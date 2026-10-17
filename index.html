@@ -600,6 +600,11 @@ function getGenreStyle(genre) {
   return { bg: bgColor, text: getContrastColor(bgColor) };
 }
 
+function getMoodStyle(mood) {
+  // ムード用の背景色と文字色を返す関数（ここではシンプルにダークグレーと白を指定）
+  return { bg: '#444444', text: '#ffffff' };
+}
+
 function buildGenreCheckboxesHTML(containerId, selectedGenres = []) {
   const container = document.getElementById(containerId);
   if (!container) return;
