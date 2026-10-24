@@ -219,18 +219,26 @@
 <div class="container">
   <h1>🎵 EDM Music Player & Ranking Chart <span id="sync-indicator"></span><span id="stamina-display" style="margin-left: 15px; font-size: 16px; color: #00ffcc;"></span></h1>
 
-  <div class="card">
-    <button class="mode-btn active" onclick="setMode('all', event)">全曲リスト</button>
-    <button class="mode-btn" onclick="setMode('genreTop', event)">🎸 ジャンルTOP</button>
-    <button class="mode-btn" onclick="setMode('moodTop', event)">🎭 ムードTOP</button>
-    <button class="mode-btn" onclick="setMode('generationTop', event)">🧬 世代別</button>
-    <button class="mode-btn" onclick="setMode('customShuffle', event)">🔀 カスタムシャッフル</button>
-    <button class="mode-btn" onclick="setMode('playCount', event)">再生数順</button>
-    <button class="mode-btn" onclick="setMode('watchTime', event)">🕒 再生時間順</button>
-    <button class="mode-btn" onclick="setMode('trending', event)">トレンド順</button>
-    <button class="mode-btn" onclick="setMode('recommend', event)">🎯 おすすめ</button>
-    <button class="mode-btn" onclick="setMode('analytics', event)">📊 アナリティクス</button>
-    <div id="trending-info" style="display:none; font-size:12px; color:#888; margin-top:8px;"></div>
+  <div class="card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+    <div>
+      <button class="mode-btn active" onclick="setMode('all', event)">全曲リスト</button>
+      <button class="mode-btn" onclick="setMode('genreTop', event)">🎸 ジャンルTOP</button>
+      <button class="mode-btn" onclick="setMode('moodTop', event)">🎭 ムードTOP</button>
+      <button class="mode-btn" onclick="setMode('generationTop', event)">🧬 世代別</button>
+      <button class="mode-btn" onclick="setMode('customShuffle', event)">🔀 カスタムシャッフル</button>
+      <button class="mode-btn" onclick="setMode('playCount', event)">再生数順</button>
+      <button class="mode-btn" onclick="setMode('watchTime', event)">🕒 再生時間順</button>
+      <button class="mode-btn" onclick="setMode('trending', event)">トレンド順</button>
+      <button class="mode-btn" onclick="setMode('recommend', event)">🎯 おすすめ</button>
+      <button class="mode-btn" onclick="setMode('analytics', event)">📊 アナリティクス</button>
+      <button class="mode-btn" onclick="setMode('albums', event)">💿 アルバム</button>
+    </div>
+    <div>
+      <label style="font-size: 14px; cursor: pointer; color: #ffaa00; font-weight: bold; background: #2a2a2a; padding: 6px 10px; border-radius: 4px; display: inline-flex; align-items: center; gap: 6px;">
+        <input type="checkbox" id="study-mode-checkbox" onchange="toggleStudyMode(this.checked)" style="accent-color: #ffaa00;"> 📚 勉強モード (自動再生OFF)
+      </label>
+    </div>
+    <div id="trending-info" style="display:none; font-size:12px; color:#888; margin-top:8px; width: 100%;"></div>
   </div>
 
   <div class="main-layout">
@@ -261,6 +269,7 @@
                 維持率: <span id="display-retention">0%</span> | 
                 リリース: <span id="display-year">-</span>年
               </div>
+              <div id="display-active-album-info" style="margin-top: 4px; color: #ffaa00; font-size: 12px; display: none;"></div>
             </div>
           </div>
 
@@ -296,6 +305,7 @@
       <div class="card">
         <input type="text" id="rank-search" placeholder="🔍 曲名で検索..." oninput="renderRankingUI()">
         <ul id="rank-list" class="rank-list"></ul>
+        <div id="albums-container" style="display: none;"></div>
       </div>
     </div>
   </div>
@@ -605,12 +615,9 @@ function getGenreStyle(genre) {
 }
 
 function getMoodStyle(mood) {
-  // ムード色は単色に統一し、Genreタグと同じ形で表示する。
   return { bg: '#444444', text: '#ffffff' };
 }
 
-// Firebaseでは配列が数値キーのオブジェクトとして返る場合もあるため、
-// 配列・カンマ区切り文字列・オブジェクトのいずれも同じ形式にそろえる。
 function normalizeMoodList(moods) {
   let items = [];
   if (Array.isArray(moods)) {
@@ -625,7 +632,6 @@ function normalizeMoodList(moods) {
         .sort(([a], [b]) => /^\d+$/.test(a) && /^\d+$/.test(b) ? Number(a) - Number(b) : a.localeCompare(b))
         .map(([, value]) => value);
     } else {
-      // { MoodName: true } のような集合形式にも対応する。
       items = entries.filter(([, value]) => value === true || value === 1).map(([key]) => key);
     }
   }
@@ -760,6 +766,21 @@ function renderStaminaUI() {
 loadStaminaState();
 setInterval(updateStamina, 1000);
 
+// --------------------------------------------------
+// 📚 勉強モードの状態管理
+// --------------------------------------------------
+let isStudyMode = localStorage.getItem('ncs_study_mode') === 'true';
+window.addEventListener('DOMContentLoaded', () => {
+  const cb = document.getElementById('study-mode-checkbox');
+  if (cb) cb.checked = isStudyMode;
+});
+
+function toggleStudyMode(enabled) {
+  isStudyMode = enabled;
+  localStorage.setItem('ncs_study_mode', isStudyMode);
+  showToast(isStudyMode ? '📚 勉強モードをONにしました（自動再生OFF）' : '📖 勉強モードをOFFにしました（自動再生ON）');
+}
+
 let TIER_DEFINITIONS = [
   { code: "SSSS", name: "GOAT", maxRank: 1 },
   { code: "SSS",  name: "Masterpiece of Masterpiece", maxRank: 3 },
@@ -821,8 +842,11 @@ const db = firebase.database();
 const songsRef = db.ref('music_chart/songs');
 const historyRef = db.ref('music_chart/daily_history');
 const tierDefinitionsRef = db.ref('music_chart/tier_definitions');
+const albumsRef = db.ref('music_chart/albums');
 
 let songs = [];
+let albums = [];
+let activeAlbumId = null;
 let currentPlaylist = [];
 let currentIndex = 0;
 let player;
@@ -852,6 +876,26 @@ let trendStartSnapshot = null;
 let trendEndSnapshot = null;
 let trendStartDateUsed = null;
 let trendEndDateUsed = null;
+
+// Firebase: Albums Sync
+albumsRef.on('value', (snapshot) => {
+  const data = snapshot.val();
+  if (data) {
+    albums = Object.keys(data).map(key => ({
+      id: key,
+      title: data[key].title || '',
+      gadget: data[key].gadget || '',
+      songIds: Array.isArray(data[key].songIds) ? data[key].songIds : [],
+      playCount: data[key].playCount || 0,
+      totalWatchTime: data[key].totalWatchTime || 0
+    }));
+  } else {
+    albums = [];
+  }
+  if (currentMode === 'albums') {
+    renderAlbumsUI();
+  }
+});
 
 tierDefinitionsRef.on('value', (snapshot) => {
   const data = snapshot.val();
@@ -965,7 +1009,6 @@ songsRef.on('value', (snapshot) => {
       }
 
       let songMoods = normalizeMoodList(s.moods);
-      // 古いデータで moods が未設定・空の場合は、単数形 mood も読み取る。
       if (songMoods.length === 0 && s.mood) {
         songMoods = normalizeMoodList(s.mood);
       }
@@ -1023,6 +1066,8 @@ songsRef.on('value', (snapshot) => {
       updateGenerationTopList();
     } else if (currentMode === 'recommend') {
       computeAndRenderRecommendations();
+    } else if (currentMode === 'albums') {
+      renderAlbumsUI();
     } else {
       updatePlaylistByMode(false);
       renderRankingUI();
@@ -1093,7 +1138,8 @@ function saveDailySnapshot(dateStr) {
 
   const snapshotData = {
     timestamp: firebase.database.ServerValue.TIMESTAMP,
-    songs: {}
+    songs: {},
+    albums: {}
   };
 
   songs.forEach((song, idx) => {
@@ -1110,6 +1156,14 @@ function saveDailySnapshot(dateStr) {
       generation: song.generation !== undefined ? song.generation : null,
       order: song.order,
       rank: idx + 1
+    };
+  });
+
+  albums.forEach(album => {
+    snapshotData.albums[album.id] = {
+      title: album.title,
+      playCount: album.playCount || 0,
+      totalWatchTime: album.totalWatchTime || 0
     };
   });
 
@@ -1632,15 +1686,17 @@ function updatePlaylistByMode(forceReshuffle = false) {
   const analyticsContainer = document.getElementById('analytics-container');
   const recommendContainer = document.getElementById('recommend-container');
   const customShuffleContainer = document.getElementById('custom-shuffle-container');
+  const albumsContainer = document.getElementById('albums-container');
   const rankList = document.getElementById('rank-list');
   const searchBox = document.getElementById('rank-search');
 
-  const isSpecialView = (currentMode === 'analytics' || currentMode === 'recommend');
+  const isSpecialView = (currentMode === 'analytics' || currentMode === 'recommend' || currentMode === 'albums');
   if (analyticsContainer) analyticsContainer.style.display = (currentMode === 'analytics') ? 'block' : 'none';
   if (recommendContainer) recommendContainer.style.display = (currentMode === 'recommend') ? 'block' : 'none';
   if (customShuffleContainer) customShuffleContainer.style.display = (currentMode === 'customShuffle') ? 'block' : 'none';
-  if (rankList) rankList.style.display = isSpecialView ? 'none' : 'block';
-  if (searchBox) searchBox.style.display = isSpecialView ? 'none' : 'block';
+  if (albumsContainer) albumsContainer.style.display = (currentMode === 'albums') ? 'block' : 'none';
+  if (rankList) rankList.style.display = (currentMode === 'analytics' || currentMode === 'recommend' || currentMode === 'albums') ? 'none' : 'block';
+  if (searchBox) searchBox.style.display = (currentMode === 'analytics' || currentMode === 'recommend' || currentMode === 'albums') ? 'none' : 'block';
 
   if (currentMode === 'analytics') {
     renderAnalyticsTable();
@@ -1650,6 +1706,11 @@ function updatePlaylistByMode(forceReshuffle = false) {
 
   if (currentMode === 'recommend') {
     computeAndRenderRecommendations();
+    return;
+  }
+
+  if (currentMode === 'albums') {
+    renderAlbumsUI();
     return;
   }
   
@@ -1691,6 +1752,162 @@ function updatePlaylistByMode(forceReshuffle = false) {
   } else {
     currentPlaylist = [...songs];
   }
+}
+
+// --------------------------------------------------
+// 💿 アルバム機能の実装
+// --------------------------------------------------
+function renderAlbumsUI() {
+  const container = document.getElementById('albums-container');
+  if (!container) return;
+
+  let html = `
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+      <h2 style="margin: 0;">💿 アルバム一覧</h2>
+      <button onclick="openAlbumEditor()" style="background-color: #00ffcc; color: #000; font-weight: bold;">＋ 新アルバム作成</button>
+    </div>
+  `;
+
+  if (albums.length === 0) {
+    html += '<p style="color: #888;">アルバムがまだありません。「＋ 新アルバム作成」から作成してください。</p>';
+  } else {
+    albums.forEach(album => {
+      const albumSongs = album.songIds.map(id => songs.find(s => s.id === id)).filter(Boolean);
+      const smallSongNames = albumSongs.length > 0 ? albumSongs.map(s => s.title).join(', ') : '曲が登録されていません';
+      const gadgetImg = album.gadget ? album.gadget : (albumSongs.length > 0 ? `https://i.ytimg.com/vi/${albumSongs[0].youtubeId}/mqdefault.jpg` : '');
+
+      html += `
+        <div style="background: #2a2a2a; border-radius: 6px; padding: 12px; margin-bottom: 12px; display: flex; align-items: center; gap: 12px;">
+          <img src="${gadgetImg}" style="width: 80px; height: 60px; object-fit: cover; border-radius: 4px; background: #000; flex-shrink: 0;" alt="">
+          <div style="flex-grow: 1; min-width: 0;">
+            <div style="font-weight: bold; font-size: 16px; color: #00ffcc; display: flex; align-items: center; gap: 8px;">
+              ${album.title}
+              <span style="font-size: 12px; color: #888; font-weight: normal;">(再生回数: <strong style="color:#fff;">${album.playCount || 0}回</strong> / 視聴時間: <strong style="color:#fff;">${Math.round((album.totalWatchTime || 0) / 60)}分</strong>)</span>
+            </div>
+            <div style="font-size: 12px; color: #aaa; margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-all;">
+              🎵 ${smallSongNames}
+            </div>
+          </div>
+          <div style="display: flex; gap: 6px; flex-shrink: 0;">
+            <button onclick="playAlbum('${album.id}')" style="background-color: #00ffcc; color: #000;">▶ 再生</button>
+            <button onclick="openAlbumEditor('${album.id}')" style="background-color: #555; color: #fff;">✎ 編集</button>
+            <button onclick="deleteAlbum('${album.id}')" class="rank-del-btn">✕</button>
+          </div>
+        </div>
+      `;
+    });
+  }
+
+  container.innerHTML = html;
+}
+
+let editingAlbumId = null;
+
+function openAlbumEditor(albumId = null) {
+  editingAlbumId = albumId;
+  const album = albumId ? albums.find(a => a.id === albumId) : null;
+  const title = album ? album.title : '';
+  const gadget = album ? album.gadget : '';
+  const selectedSongIds = album ? [...album.songIds] : [];
+
+  const container = document.getElementById('albums-container');
+  if (!container) return;
+
+  let songCheckboxesHtml = '';
+  songs.forEach(song => {
+    const checked = selectedSongIds.includes(song.id) ? 'checked' : '';
+    songCheckboxesHtml += `
+      <label style="display: flex; align-items: center; gap: 8px; background: #222; padding: 6px; border-radius: 4px; margin-bottom: 4px; cursor: pointer;">
+        <input type="checkbox" value="${song.id}" ${checked} class="album-song-cb" style="accent-color: #00ffcc;">
+        <img src="https://i.ytimg.com/vi/${song.youtubeId}/default.jpg" style="width: 40px; height: 30px; object-fit: cover; border-radius: 2px;" alt="">
+        <span style="font-size: 13px; flex-grow: 1;">${song.title}</span>
+      </label>
+    `;
+  });
+
+  container.innerHTML = `
+    <div style="background: #2a2a2a; border-radius: 6px; padding: 15px;">
+      <h3 style="margin-top: 0; color: #00ffcc;">${albumId ? 'アルバム編集' : '新規アルバム作成'}</h3>
+      <div style="margin-bottom: 10px;">
+        <label style="font-size: 12px; color: #aaa;">アルバム名:</label><br>
+        <input type="text" id="album-edit-title" value="${title}" placeholder="例: Chill EDM メドレー" style="width: 100%; box-sizing: border-box;">
+      </div>
+      <div style="margin-bottom: 10px;">
+        <label style="font-size: 12px; color: #aaa;">ガジェット (画像URL / アイコン等):</label><br>
+        <input type="text" id="album-edit-gadget" value="${gadget}" placeholder="例: https://example.com/image.jpg" style="width: 100%; box-sizing: border-box;">
+      </div>
+      <div style="margin-bottom: 10px;">
+        <label style="font-size: 12px; color: #aaa;">収録曲 (選択して並び替え可能):</label>
+        <div style="max-height: 250px; overflow-y: auto; background: #1a1a1a; border: 1px solid #444; padding: 8px; border-radius: 4px; margin-top: 4px;" id="album-song-selection-list">
+          ${songCheckboxesHtml}
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px; justify-content: flex-end;">
+        <button onclick="saveAlbum()" style="background-color: #00ffcc; color: #000; font-weight: bold;">💾 保存</button>
+        <button onclick="renderAlbumsUI()" style="background-color: #555; color: #fff;">キャンセル</button>
+      </div>
+    </div>
+  `;
+}
+
+function saveAlbum() {
+  const title = document.getElementById('album-edit-title').value.trim();
+  const gadget = document.getElementById('album-edit-gadget').value.trim();
+  if (!title) return showToast('アルバム名を入力してください');
+
+  const checkboxes = document.querySelectorAll('.album-song-cb:checked');
+  const songIds = Array.from(checkboxes).map(cb => cb.value);
+
+  const albumId = editingAlbumId || Date.now().toString();
+  const albumData = {
+    title,
+    gadget,
+    songIds,
+    playCount: editingAlbumId ? (albums.find(a => a.id === editingAlbumId)?.playCount || 0) : 0,
+    totalWatchTime: editingAlbumId ? (albums.find(a => a.id === editingAlbumId)?.totalWatchTime || 0) : 0
+  };
+
+  albumsRef.child(albumId).set(albumData, (error) => {
+    if (error) {
+      showToast('アルバムの保存に失敗しました');
+    } else {
+      showToast('アルバムを保存しました');
+      editingAlbumId = null;
+      renderAlbumsUI();
+    }
+  });
+}
+
+function deleteAlbum(albumId) {
+  if (confirm('このアルバムを削除しますか？')) {
+    albumsRef.child(albumId).remove((error) => {
+      if (error) {
+        showToast('削除に失敗しました');
+      } else {
+        showToast('アルバムを削除しました');
+        renderAlbumsUI();
+      }
+    });
+  }
+}
+
+function playAlbum(albumId) {
+  const album = albums.find(a => a.id === albumId);
+  if (!album || !album.songIds || album.songIds.length === 0) {
+    return showToast('このアルバムには曲が登録されていません');
+  }
+
+  const playlist = album.songIds.map(id => songs.find(s => s.id === id)).filter(Boolean);
+  if (playlist.length === 0) {
+    return showToast('有効な曲が見つかりませんでした');
+  }
+
+  activeAlbumId = album.id;
+  currentPlaylist = playlist;
+  currentIndex = 0;
+  loadCurrentSong(true);
+  showToast(`💿 アル「${album.title}」の再生を開始します`);
+  updateTrackInfoDisplay();
 }
 
 function computeAndRenderRecommendations() {
@@ -1791,13 +2008,14 @@ function computeAndRenderRecommendations() {
 }
 
 function setMode(mode, e) {
-  if (isStaminaRestrictedTime() && mode !== 'all' && mode !== 'customShuffle') {
-    showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）は全曲リストとカスタムシャッフル以外のタブを開けません');
+  // スタミナ制限に関わらず、全曲リスト、カスタムシャッフル、アルバム機能、および勉強モードは常に有効
+  if (isStaminaRestrictedTime() && mode !== 'all' && mode !== 'customShuffle' && mode !== 'albums') {
+    showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）は全曲リスト・カスタムシャッフル・アルバム以外のタブを開けません');
     return;
   }
 
   document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
-  e.target.classList.add('active');
+  if (e && e.target) e.target.classList.add('active');
   currentMode = mode;
 
   const reshuffleBtn = document.getElementById('reshuffle-btn');
@@ -1810,6 +2028,7 @@ function setMode(mode, e) {
   const moodTopContainer   = document.getElementById('mood-top-container');
   const generationTopContainer = document.getElementById('generation-top-container');
   const customShuffleContainer = document.getElementById('custom-shuffle-container');
+  const albumsContainer = document.getElementById('albums-container');
 
   if (dateRangeContainer) dateRangeContainer.style.display = (mode === 'trending') ? 'block' : 'none';
   if (analyticsContainer) analyticsContainer.style.display = (mode === 'analytics') ? 'block' : 'none';
@@ -1818,10 +2037,11 @@ function setMode(mode, e) {
   if (moodTopContainer)   moodTopContainer.style.display   = (mode === 'moodTop')   ? 'block' : 'none';
   if (generationTopContainer) generationTopContainer.style.display = (mode === 'generationTop') ? 'block' : 'none';
   if (customShuffleContainer) customShuffleContainer.style.display = (mode === 'customShuffle') ? 'block' : 'none';
+  if (albumsContainer) albumsContainer.style.display = (mode === 'albums') ? 'block' : 'none';
 
   const listEl = document.getElementById('rank-list');
   if (listEl) {
-    listEl.style.display = (mode === 'analytics' || mode === 'recommend') ? 'none' : 'block';
+    listEl.style.display = (mode === 'analytics' || mode === 'recommend' || mode === 'albums') ? 'none' : 'block';
   }
 
   const proceed = () => {
@@ -1837,6 +2057,8 @@ function setMode(mode, e) {
     } else if (mode === 'customShuffle') {
       populateCustomShuffleOptions();
       updatePlaylistByMode(false);
+    } else if (mode === 'albums') {
+      renderAlbumsUI();
     } else {
       updatePlaylistByMode(false);
     }
@@ -2025,6 +2247,21 @@ function updateTrackInfoDisplay() {
     const tierObj = TIER_DEFINITIONS.find(t => t.code === song.tier) || { name: song.tier };
     document.getElementById('display-tier').innerText = `${song.tier} (${tierObj.name})`;
     document.getElementById('input-direct-rank').placeholder = `${song.order + 1}位`;
+
+    const activeAlbumInfo = document.getElementById('display-active-album-info');
+    if (activeAlbumInfo) {
+      if (activeAlbumId) {
+        const alb = albums.find(a => a.id === activeAlbumId);
+        if (alb) {
+          activeAlbumInfo.style.display = 'block';
+          activeAlbumInfo.innerText = `💿 アルバム再生中: ${alb.title}`;
+        } else {
+          activeAlbumInfo.style.display = 'none';
+        }
+      } else {
+        activeAlbumInfo.style.display = 'none';
+      }
+    }
   }
 }
 
@@ -2107,6 +2344,11 @@ function onPlayerStateChange(event) {
 
   if (event.data === YT.PlayerState.ENDED) {
     isManualSelection = false;
+    if (isStudyMode) {
+      // 勉強モードがONの時は自動再生（次の曲へ進む）をオフにする
+      showToast('📚 勉強モード：曲が終了したため自動再生を停止しました');
+      return;
+    }
     setTimeout(() => { nextSong(); }, 200);
   }
 }
@@ -2152,12 +2394,29 @@ function startListeningTimer() {
     song.totalWatchTime++;
     pendingWatchSeconds++;
 
+    // アルバム再生中であればアルバムの総視聴時間も加算
+    if (activeAlbumId) {
+      const alb = albums.find(a => a.id === activeAlbumId);
+      if (alb) {
+        alb.totalWatchTime = (alb.totalWatchTime || 0) + 1;
+      }
+    }
+
     const threshold = isManualSelection ? 0.1 : 0.3;
     if (!isCountedCurrentSong && (listenedSeconds / duration) >= threshold) {
       song.playCount++;
       song.logicalMaxWatchTime = (song.logicalMaxWatchTime || (song.playCount * song.duration)) + song.duration;
       isCountedCurrentSong = true;
       pendingPlayIncrement = 1;
+
+      // アルバム再生中の初回カウント時にアルバムごとの再生回数も加算
+      if (activeAlbumId) {
+        const alb = albums.find(a => a.id === activeAlbumId);
+        if (alb) {
+          alb.playCount = (alb.playCount || 0) + 1;
+          db.ref(`music_chart/albums/${alb.id}/playCount`).set(alb.playCount);
+        }
+      }
     }
 
     if (pendingWatchSeconds >= FLUSH_INTERVAL_SECONDS || pendingPlayIncrement) {
@@ -2168,13 +2427,20 @@ function startListeningTimer() {
 
 function flushListenData(song) {
   if (!song) return;
-  if (pendingWatchSeconds === 0 && !pendingPlayIncrement && pendingDurationUpdate === null) return;
+  if (pendingWatchSeconds === 0 && !pendingPlayIncrement && pendingDurationUpdate === null && !activeAlbumId) return;
 
   const updates = {};
   updates[`music_chart/songs/${song.id}/totalWatchTime`] = song.totalWatchTime;
   updates[`music_chart/songs/${song.id}/logicalMaxWatchTime`] = song.logicalMaxWatchTime || (song.playCount * song.duration);
   if (pendingPlayIncrement) updates[`music_chart/songs/${song.id}/playCount`] = song.playCount;
   if (pendingDurationUpdate !== null) updates[`music_chart/songs/${song.id}/duration`] = pendingDurationUpdate;
+
+  if (activeAlbumId) {
+    const alb = albums.find(a => a.id === activeAlbumId);
+    if (alb) {
+      updates[`music_chart/albums/${alb.id}/totalWatchTime`] = alb.totalWatchTime;
+    }
+  }
 
   db.ref().update(updates);
 
@@ -2222,11 +2488,8 @@ function startSeekBarUpdater() {
   }, 1000);
 }
 
-// --------------------------------------------------
-// ランキング表示（ご指示に基づき再設計）
-// --------------------------------------------------
 function renderRankingUI() {
-  if (currentMode === 'analytics' || currentMode === 'recommend') return;
+  if (currentMode === 'analytics' || currentMode === 'recommend' || currentMode === 'albums') return;
 
   const listEl = document.getElementById('rank-list');
   if (!listEl) return;
@@ -2315,7 +2578,6 @@ function renderRankingUI() {
       generationHtml = `<span class="rank-generation-tag">第${song.generation}世代</span>`;
     }
 
-    // 独立したレイアウト構造への組み立て
     li.innerHTML = `
       <div class="rank-left-group">
         <span class="rank-num">${index + 1}.</span>
