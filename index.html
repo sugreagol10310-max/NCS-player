@@ -210,6 +210,25 @@
       color: #888;
       margin-left: 8px;
     }
+
+    /* アルバム編集用スタイル */
+    .album-search-results {
+      max-height: 150px;
+      overflow-y: auto;
+      background: #111;
+      border: 1px solid #444;
+      border-radius: 4px;
+      margin-top: 4px;
+    }
+    .album-search-item {
+      padding: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      border-bottom: 1px solid #222;
+    }
+    .album-search-item:hover { background: #2a2a2a; }
   </style>
 </head>
 <body>
@@ -892,7 +911,7 @@ albumsRef.on('value', (snapshot) => {
   } else {
     albums = [];
   }
-  if (currentMode === 'albums') {
+  if (currentMode === 'albums' && editingAlbumId === null) {
     renderAlbumsUI();
   }
 });
@@ -1710,7 +1729,9 @@ function updatePlaylistByMode(forceReshuffle = false) {
   }
 
   if (currentMode === 'albums') {
-    renderAlbumsUI();
+    if (editingAlbumId === null) {
+      renderAlbumsUI();
+    }
     return;
   }
   
@@ -1755,9 +1776,10 @@ function updatePlaylistByMode(forceReshuffle = false) {
 }
 
 // --------------------------------------------------
-// 💿 アルバム機能の実装
+// 💿 アルバム機能の実装（検索追加＆順序カスタム強化版）
 // --------------------------------------------------
 function renderAlbumsUI() {
+  editingAlbumId = null;
   const container = document.getElementById('albums-container');
   if (!container) return;
 
@@ -1802,52 +1824,148 @@ function renderAlbumsUI() {
 }
 
 let editingAlbumId = null;
+let currentEditingSongIds = [];
 
 function openAlbumEditor(albumId = null) {
   editingAlbumId = albumId;
   const album = albumId ? albums.find(a => a.id === albumId) : null;
   const title = album ? album.title : '';
   const gadget = album ? album.gadget : '';
-  const selectedSongIds = album ? [...album.songIds] : [];
+  currentEditingSongIds = album ? [...album.songIds] : [];
 
+  renderAlbumEditorUI(title, gadget);
+}
+
+function renderAlbumEditorUI(title, gadget) {
   const container = document.getElementById('albums-container');
   if (!container) return;
 
-  let songCheckboxesHtml = '';
-  songs.forEach(song => {
-    const checked = selectedSongIds.includes(song.id) ? 'checked' : '';
-    songCheckboxesHtml += `
-      <label style="display: flex; align-items: center; gap: 8px; background: #222; padding: 6px; border-radius: 4px; margin-bottom: 4px; cursor: pointer;">
-        <input type="checkbox" value="${song.id}" ${checked} class="album-song-cb" style="accent-color: #00ffcc;">
-        <img src="https://i.ytimg.com/vi/${song.youtubeId}/default.jpg" style="width: 40px; height: 30px; object-fit: cover; border-radius: 2px;" alt="">
-        <span style="font-size: 13px; flex-grow: 1;">${song.title}</span>
-      </label>
-    `;
-  });
-
   container.innerHTML = `
     <div style="background: #2a2a2a; border-radius: 6px; padding: 15px;">
-      <h3 style="margin-top: 0; color: #00ffcc;">${albumId ? 'アルバム編集' : '新規アルバム作成'}</h3>
+      <h3 style="margin-top: 0; color: #00ffcc;">${editingAlbumId ? 'アルバム編集' : '新規アルバム作成'}</h3>
       <div style="margin-bottom: 10px;">
         <label style="font-size: 12px; color: #aaa;">アルバム名:</label><br>
         <input type="text" id="album-edit-title" value="${title}" placeholder="例: Chill EDM メドレー" style="width: 100%; box-sizing: border-box;">
       </div>
       <div style="margin-bottom: 10px;">
-        <label style="font-size: 12px; color: #aaa;">ガジェット (画像URL / アイコン等):</label><br>
-        <input type="text" id="album-edit-gadget" value="${gadget}" placeholder="例: https://example.com/image.jpg" style="width: 100%; box-sizing: border-box;">
+        <label style="font-size: 12px; color: #aaa;">ガジェット (画像URL / サムネイル):</label><br>
+        <input type="text" id="album-edit-gadget" value="${gadget}" placeholder="例: https://example.com/image.jpg（空欄時は最初の曲画像）" style="width: 100%; box-sizing: border-box;">
       </div>
-      <div style="margin-bottom: 10px;">
-        <label style="font-size: 12px; color: #aaa;">収録曲 (選択して並び替え可能):</label>
-        <div style="max-height: 250px; overflow-y: auto; background: #1a1a1a; border: 1px solid #444; padding: 8px; border-radius: 4px; margin-top: 4px;" id="album-song-selection-list">
-          ${songCheckboxesHtml}
-        </div>
+      
+      <div style="margin-bottom: 15px; background: #1a1a1a; padding: 10px; border-radius: 4px;">
+        <label style="font-size: 13px; color: #00ffcc; font-weight: bold;">🔍 曲を検索して追加:</label><br>
+        <input type="text" id="album-song-search-input" placeholder="曲名で検索..." style="width: 100%; box-sizing: border-box; margin-top: 4px;" oninput="onAlbumSongSearchInput(this.value)">
+        <div id="album-search-results" class="album-search-results" style="display: none;"></div>
       </div>
+
+      <div style="margin-bottom: 15px;">
+        <label style="font-size: 13px; color: #00ffcc; font-weight: bold;">📋 収録曲一覧（順番変更・削除が可能）:</label>
+        <div id="album-selected-songs-list" style="margin-top: 6px; max-height: 250px; overflow-y: auto;"></div>
+      </div>
+
       <div style="display: flex; gap: 10px; justify-content: flex-end;">
-        <button onclick="saveAlbum()" style="background-color: #00ffcc; color: #000; font-weight: bold;">💾 保存</button>
+        <button onclick="saveAlbum()" style="background-color: #00ffcc; color: #000; font-weight: bold;">💾 Firebaseに保存</button>
         <button onclick="renderAlbumsUI()" style="background-color: #555; color: #fff;">キャンセル</button>
       </div>
     </div>
   `;
+
+  renderAlbumSelectedSongsList();
+}
+
+function onAlbumSongSearchInput(keyword) {
+  const resultsContainer = document.getElementById('album-search-results');
+  if (!resultsContainer) return;
+
+  const q = keyword.trim().toLowerCase();
+  if (!q) {
+    resultsContainer.style.display = 'none';
+    resultsContainer.innerHTML = '';
+    return;
+  }
+
+  const matches = songs.filter(s => s.title.toLowerCase().includes(q));
+  if (matches.length === 0) {
+    resultsContainer.style.display = 'block';
+    resultsContainer.innerHTML = '<div style="padding:8px; color:#888; font-size:12px;">一致する曲が見つかりません</div>';
+    return;
+  }
+
+  let html = '';
+  matches.forEach(s => {
+    const isAdded = currentEditingSongIds.includes(s.id);
+    html += `
+      <div class="album-search-item" onclick="addSongToAlbumEditor('${s.id}')">
+        <img src="https://i.ytimg.com/vi/${s.youtubeId}/default.jpg" style="width: 36px; height: 27px; object-fit: cover; border-radius: 2px;" alt="">
+        <span style="font-size: 13px; flex-grow: 1;">${s.title}</span>
+        ${isAdded ? '<span style="font-size: 11px; color: #888;">[追加済み]</span>' : '<span style="font-size: 11px; color: #00ffcc;">＋ 追加</span>'}
+      </div>
+    `;
+  });
+
+  resultsContainer.style.display = 'block';
+  resultsContainer.innerHTML = html;
+}
+
+function addSongToAlbumEditor(songId) {
+  if (!currentEditingSongIds.includes(songId)) {
+    currentEditingSongIds.push(songId);
+    renderAlbumSelectedSongsList();
+    showToast('曲を追加しました');
+  } else {
+    showToast('既にリストに追加されています');
+  }
+  
+  const searchInput = document.getElementById('album-song-search-input');
+  if (searchInput) {
+    searchInput.value = '';
+    onAlbumSongSearchInput('');
+  }
+}
+
+function removeSongFromAlbumEditor(index) {
+  currentEditingSongIds.splice(index, 1);
+  renderAlbumSelectedSongsList();
+}
+
+function moveSongInAlbumEditor(index, direction) {
+  const newIndex = index + direction;
+  if (newIndex < 0 || newIndex >= currentEditingSongIds.length) return;
+  const tmp = currentEditingSongIds[index];
+  currentEditingSongIds[index] = currentEditingSongIds[newIndex];
+  currentEditingSongIds[newIndex] = tmp;
+  renderAlbumSelectedSongsList();
+}
+
+function renderAlbumSelectedSongsList() {
+  const container = document.getElementById('album-selected-songs-list');
+  if (!container) return;
+
+  if (currentEditingSongIds.length === 0) {
+    container.innerHTML = '<div style="padding:10px; color:#888; font-size:12px; text-align:center; background:#1a1a1a; border-radius:4px;">曲が登録されていません。上の検索バーから追加してください。</div>';
+    return;
+  }
+
+  let html = '';
+  currentEditingSongIds.forEach((id, idx) => {
+    const song = songs.find(s => s.id === id);
+    if (!song) return;
+
+    html += `
+      <div style="background: #222; border-radius: 4px; padding: 6px 10px; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+        <span style="font-weight: bold; font-size: 12px; color: #00ffcc; width: 24px;">${idx + 1}.</span>
+        <img src="https://i.ytimg.com/vi/${song.youtubeId}/default.jpg" style="width: 36px; height: 27px; object-fit: cover; border-radius: 2px;" alt="">
+        <span style="font-size: 13px; flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${song.title}</span>
+        <div style="display: flex; gap: 2px;">
+          <button class="rank-move-btn" title="上へ" onclick="moveSongInAlbumEditor(${idx}, -1)">▲</button>
+          <button class="rank-move-btn" title="下へ" onclick="moveSongInAlbumEditor(${idx}, 1)">▼</button>
+        </div>
+        <button class="rank-del-btn" onclick="removeSongFromAlbumEditor(${idx})">✕</button>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
 }
 
 function saveAlbum() {
@@ -1855,14 +1973,11 @@ function saveAlbum() {
   const gadget = document.getElementById('album-edit-gadget').value.trim();
   if (!title) return showToast('アルバム名を入力してください');
 
-  const checkboxes = document.querySelectorAll('.album-song-cb:checked');
-  const songIds = Array.from(checkboxes).map(cb => cb.value);
-
   const albumId = editingAlbumId || Date.now().toString();
   const albumData = {
     title,
     gadget,
-    songIds,
+    songIds: currentEditingSongIds,
     playCount: editingAlbumId ? (albums.find(a => a.id === editingAlbumId)?.playCount || 0) : 0,
     totalWatchTime: editingAlbumId ? (albums.find(a => a.id === editingAlbumId)?.totalWatchTime || 0) : 0
   };
@@ -1906,7 +2021,7 @@ function playAlbum(albumId) {
   currentPlaylist = playlist;
   currentIndex = 0;
   loadCurrentSong(true);
-  showToast(`💿 アル「${album.title}」の再生を開始します`);
+  showToast(`💿 アルバム「${album.title}」の再生を開始します`);
   updateTrackInfoDisplay();
 }
 
@@ -2008,7 +2123,7 @@ function computeAndRenderRecommendations() {
 }
 
 function setMode(mode, e) {
-  // スタミナ制限に関わらず、全曲リスト、カスタムシャッフル、アルバム機能、および勉強モードは常に有効
+
   if (isStaminaRestrictedTime() && mode !== 'all' && mode !== 'customShuffle' && mode !== 'albums') {
     showToast('スタミナ制限時間帯（祝日を除く平日0:00〜21:00）は全曲リスト・カスタムシャッフル・アルバム以外のタブを開けません');
     return;
@@ -2345,7 +2460,6 @@ function onPlayerStateChange(event) {
   if (event.data === YT.PlayerState.ENDED) {
     isManualSelection = false;
     if (isStudyMode) {
-      // 勉強モードがONの時は自動再生（次の曲へ進む）をオフにする
       showToast('📚 勉強モード：曲が終了したため自動再生を停止しました');
       return;
     }
@@ -2394,7 +2508,6 @@ function startListeningTimer() {
     song.totalWatchTime++;
     pendingWatchSeconds++;
 
-    // アルバム再生中であればアルバムの総視聴時間も加算
     if (activeAlbumId) {
       const alb = albums.find(a => a.id === activeAlbumId);
       if (alb) {
@@ -2409,7 +2522,6 @@ function startListeningTimer() {
       isCountedCurrentSong = true;
       pendingPlayIncrement = 1;
 
-      // アルバム再生中の初回カウント時にアルバムごとの再生回数も加算
       if (activeAlbumId) {
         const alb = albums.find(a => a.id === activeAlbumId);
         if (alb) {
