@@ -5,7 +5,36 @@
   <title>EDM Music Player & Ranking Chart</title>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
   <style>
+    #auth-gate {
+      min-height: calc(100vh - 40px);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    body.is-authenticated #auth-gate { display: none; }
+    #auth-card {
+      width: min(420px, 100%);
+      box-sizing: border-box;
+      background: #1e1e1e;
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 28px;
+      box-shadow: 0 18px 60px rgba(0,0,0,.35);
+    }
+    #auth-card h1 { margin-top: 0; font-size: 25px; }
+    #auth-card p { color: #aaa; line-height: 1.6; }
+    #auth-card label { display: block; margin-top: 14px; color: #ccc; font-size: 13px; }
+    #auth-card input { width: 100%; box-sizing: border-box; margin-top: 6px; }
+    #auth-login-button { width: 100%; margin: 18px 0 0; padding: 11px; }
+    #auth-error { color: #ff7777; min-height: 1.5em; font-size: 13px; white-space: pre-wrap; }
+    #auth-status { color: #aaa; font-size: 13px; }
+    #auth-signout-button { background: #555; color: #fff; }
+    #account-bar { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin: -4px 0 12px; color: #aaa; font-size: 12px; }
+    #app-shell { display: none; }
+    body.is-authenticated #app-shell { display: block; }
     body {
       background-color: #121212;
       color: #ffffff;
@@ -233,9 +262,27 @@
 </head>
 <body>
 
+<div id="auth-gate" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+  <div id="auth-card">
+    <h1 id="auth-title">🔐 NCS Wiki Login</h1>
+    <p>登録済みのオーナーアカウントでログインしてください。</p>
+    <form id="auth-login-form" autocomplete="on">
+      <label for="auth-email">メールアドレス</label>
+      <input id="auth-email" name="email" type="email" autocomplete="username" required>
+      <label for="auth-password">パスワード</label>
+      <input id="auth-password" name="password" type="password" autocomplete="current-password" required>
+      <button id="auth-login-button" type="submit" disabled>ログイン</button>
+    </form>
+    <div id="auth-status" aria-live="polite">ログイン状態を確認しています…</div>
+    <div id="auth-error" role="alert" aria-live="assertive"></div>
+    <button id="auth-signout-button" type="button" style="display:none;">別アカウントに切り替える</button>
+  </div>
+</div>
+
 <div id="toast"></div>
 
-<div class="container">
+<div id="app-shell" class="container">
+  <div id="account-bar"><span id="account-label"></span><button type="button" onclick="logoutOwner()">ログアウト</button></div>
   <h1>🎵 EDM Music Player & Ranking Chart <span id="sync-indicator"></span><span id="stamina-display" style="margin-left: 15px; font-size: 16px; color: #00ffcc;"></span></h1>
 
   <div class="card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
@@ -857,11 +904,23 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
 const db = firebase.database();
 const songsRef = db.ref('music_chart/songs');
 const historyRef = db.ref('music_chart/daily_history');
 const tierDefinitionsRef = db.ref('music_chart/tier_definitions');
 const albumsRef = db.ref('music_chart/albums');
+
+// クライアント側の表示制御用ID。実際のアクセス制御はRealtime Database Rulesでも強制する。
+const OWNER_UID = 'fO9nnb45uofljcEn99QgFw3e3352';
+let currentAuthUser = null;
+let databaseSyncActive = false;
+let historyRefreshTimer = null;
+let isYouTubePlayerReady = false;
+
+function isOwnerAuthenticated() {
+  return !!(currentAuthUser && currentAuthUser.uid === OWNER_UID);
+}
 
 let songs = [];
 let albums = [];
@@ -896,8 +955,8 @@ let trendEndSnapshot = null;
 let trendStartDateUsed = null;
 let trendEndDateUsed = null;
 
-// Firebase: Albums Sync
-albumsRef.on('value', (snapshot) => {
+// Firebase listener callbacks (registered only after owner authentication).
+function handleAlbumsSnapshot(snapshot) {
   const data = snapshot.val();
   if (data) {
     albums = Object.keys(data).map(key => ({
@@ -914,9 +973,9 @@ albumsRef.on('value', (snapshot) => {
   if (currentMode === 'albums' && editingAlbumId === null) {
     renderAlbumsUI();
   }
-});
+}
 
-tierDefinitionsRef.on('value', (snapshot) => {
+function handleTierDefinitionsSnapshot(snapshot) {
   const data = snapshot.val();
   if (data && Array.isArray(data) && data.length > 0) {
     TIER_DEFINITIONS = data.map(t => ({
@@ -928,7 +987,7 @@ tierDefinitionsRef.on('value', (snapshot) => {
   renderRankingUI();
   updateTrackInfoDisplay();
   renderTierSettingsUI();
-});
+}
 
 function renderTierSettingsUI() {
   const container = document.getElementById('tier-settings-container');
@@ -956,6 +1015,7 @@ function renderTierSettingsUI() {
 }
 
 function saveTierSettings() {
+  if (!isOwnerAuthenticated()) return showToast('ログインが必要です');
   if (isStaminaRestrictedTime() && staminaSeconds <= 0) {
     return showToast('スタミナがないためTier設定の変更ができません');
   }
@@ -993,7 +1053,7 @@ function showSyncIndicator() {
   showSyncIndicator._t = setTimeout(() => { el.innerText = ''; }, 600);
 }
 
-songsRef.on('value', (snapshot) => {
+function handleSongsSnapshot(snapshot) {
   showSyncIndicator();
   const data = snapshot.val();
   let needsSaveCheck = false;
@@ -1073,7 +1133,7 @@ songsRef.on('value', (snapshot) => {
       renderRankingUI();
     });
 
-    if (!player || !player.getVideoData) {
+    if (isYouTubePlayerReady) {
       loadCurrentSong(false);
     }
 
@@ -1092,7 +1152,61 @@ songsRef.on('value', (snapshot) => {
       renderRankingUI();
     }
   }
-});
+}
+
+function handleDatabaseError(error) {
+  console.error('Firebase database error:', error);
+  const code = error && error.code ? error.code : '';
+  if (code === 'PERMISSION_DENIED' || code === 'database/permission-denied') {
+    showToast('Firebaseへのアクセスが拒否されました。Security RulesとログインUIDを確認してください。');
+  } else {
+    showToast('Firebaseとの同期に失敗しました。通信状態を確認してください。');
+  }
+}
+
+function startDatabaseSync() {
+  if (!isOwnerAuthenticated() || databaseSyncActive) return;
+  databaseSyncActive = true;
+
+  albumsRef.on('value', handleAlbumsSnapshot, handleDatabaseError);
+  tierDefinitionsRef.on('value', handleTierDefinitionsSnapshot, handleDatabaseError);
+  songsRef.on('value', handleSongsSnapshot, handleDatabaseError);
+
+  if (historyRefreshTimer) clearInterval(historyRefreshTimer);
+  historyRefreshTimer = setInterval(() => {
+    if (!isOwnerAuthenticated()) return;
+    fetchPastHistory(() => {
+      if (currentMode === 'trending') {
+        updatePlaylistByMode();
+        relocateCurrentSong();
+        renderRankingUI();
+        updateTrendingInfoLabel();
+      }
+    });
+  }, 5 * 60 * 1000);
+}
+
+function stopDatabaseSync() {
+  if (historyRefreshTimer) {
+    clearInterval(historyRefreshTimer);
+    historyRefreshTimer = null;
+  }
+  if (databaseSyncActive) {
+    albumsRef.off('value', handleAlbumsSnapshot);
+    tierDefinitionsRef.off('value', handleTierDefinitionsSnapshot);
+    songsRef.off('value', handleSongsSnapshot);
+    databaseSyncActive = false;
+  }
+
+  // Authが失われた後に追跡タイマーやローカルの保留値が動き続けないようにする。
+  if (listenTimer) clearInterval(listenTimer);
+  listenTimer = null;
+  activeListeningSong = null;
+  pendingWatchSeconds = 0;
+  pendingPlayIncrement = 0;
+  pendingDurationUpdate = null;
+}
+
 
 function relocateCurrentSong() {
   if (!currentSongId) return;
@@ -1105,13 +1219,14 @@ function relocateCurrentSong() {
 }
 
 function saveAllToFirebase() {
+  if (!isOwnerAuthenticated()) return;
   const dataObj = {};
   songs.forEach((s, index) => {
     s.order = index;
     s.tier = rankToTierCode(index + 1);
     dataObj[s.id] = s;
   });
-  songsRef.set(dataObj);
+  songsRef.set(dataObj).catch(handleDatabaseError);
 }
 
 function sortSongs() {
@@ -1136,7 +1251,7 @@ let isSavingSnapshot = false;
 let lastHistoryCheckDate = null;
 
 function checkAndSaveDailyHistory() {
-  if (songs.length === 0 || isSavingSnapshot) return;
+  if (!isOwnerAuthenticated() || songs.length === 0 || isSavingSnapshot) return;
   const now = new Date();
   const dateStr = now.toISOString().split('T')[0];
 
@@ -1148,11 +1263,11 @@ function checkAndSaveDailyHistory() {
     } else {
       lastHistoryCheckDate = dateStr;
     }
-  });
+  }, handleDatabaseError);
 }
 
 function saveDailySnapshot(dateStr) {
-  if (isSavingSnapshot) return;
+  if (!isOwnerAuthenticated() || isSavingSnapshot) return;
   isSavingSnapshot = true;
 
   const snapshotData = {
@@ -1186,8 +1301,12 @@ function saveDailySnapshot(dateStr) {
     };
   });
 
-  historyRef.child(dateStr).set(snapshotData, () => {
+  historyRef.child(dateStr).set(snapshotData, (error) => {
     isSavingSnapshot = false;
+    if (error) {
+      handleDatabaseError(error);
+      return;
+    }
     lastHistoryCheckDate = dateStr;
   });
 }
@@ -1218,6 +1337,7 @@ function findClosestPastSnapshotDate(targetDateStr, availableDatesSorted) {
 }
 
 function fetchPastHistory(callback) {
+  if (!isOwnerAuthenticated()) return;
   historyRef.once('value', (snapshot) => {
     allHistoryData = snapshot.val() || {};
     const availableDates = Object.keys(allHistoryData).sort();
@@ -1238,7 +1358,7 @@ function fetchPastHistory(callback) {
 
     initAnalyticsDropdowns();
     if (callback) callback();
-  });
+  }, handleDatabaseError);
 }
 
 function updateTrendingInfoLabel() {
@@ -1252,16 +1372,7 @@ function updateTrendingInfoLabel() {
   }
 }
 
-setInterval(() => {
-  fetchPastHistory(() => {
-    if (currentMode === 'trending') {
-      updatePlaylistByMode();
-      relocateCurrentSong();
-      renderRankingUI();
-      updateTrendingInfoLabel();
-    }
-  });
-}, 5 * 60 * 1000);
+// 履歴の定期取得は認証後に startDatabaseSync() から開始する。
 
 function initAnalyticsDropdowns() {
   const startDateSelect = document.getElementById('analytics-start-date');
@@ -1969,6 +2080,7 @@ function renderAlbumSelectedSongsList() {
 }
 
 function saveAlbum() {
+  if (!isOwnerAuthenticated()) return showToast('ログインが必要です');
   const title = document.getElementById('album-edit-title').value.trim();
   const gadget = document.getElementById('album-edit-gadget').value.trim();
   if (!title) return showToast('アルバム名を入力してください');
@@ -1994,6 +2106,7 @@ function saveAlbum() {
 }
 
 function deleteAlbum(albumId) {
+  if (!isOwnerAuthenticated()) return showToast('ログインが必要です');
   if (confirm('このアルバムを削除しますか？')) {
     albumsRef.child(albumId).remove((error) => {
       if (error) {
@@ -2402,6 +2515,7 @@ function toggleEditSongForm() {
 }
 
 function saveSongEdit() {
+  if (!isOwnerAuthenticated()) return showToast('ログインが必要です');
   if (isStaminaRestrictedTime() && staminaSeconds <= 0) {
     return showToast('スタミナがないため編集ができません');
   }
@@ -2438,7 +2552,7 @@ function saveSongEdit() {
     youtubeId: song.youtubeId,
     genres: song.genres,
     generation: song.generation
-  });
+  }).catch(handleDatabaseError);
 
   document.getElementById('edit-song-form').style.display = 'none';
   updateTrackInfoDisplay();
@@ -2481,6 +2595,7 @@ function togglePlayPause() {
 }
 
 function startListeningTimer() {
+  if (!isOwnerAuthenticated()) return;
   stopListeningTimer();
   activeListeningSong = currentPlaylist[currentIndex] || null;
 
@@ -2526,7 +2641,9 @@ function startListeningTimer() {
         const alb = albums.find(a => a.id === activeAlbumId);
         if (alb) {
           alb.playCount = (alb.playCount || 0) + 1;
-          db.ref(`music_chart/albums/${alb.id}/playCount`).set(alb.playCount);
+          if (isOwnerAuthenticated()) {
+            db.ref(`music_chart/albums/${alb.id}/playCount`).set(alb.playCount).catch(handleDatabaseError);
+          }
         }
       }
     }
@@ -2538,9 +2655,14 @@ function startListeningTimer() {
 }
 
 function flushListenData(song) {
-  if (!song) return;
-  if (pendingWatchSeconds === 0 && !pendingPlayIncrement && pendingDurationUpdate === null && !activeAlbumId) return;
+  if (!isOwnerAuthenticated() || !song) return Promise.resolve(false);
+  if (pendingWatchSeconds === 0 && !pendingPlayIncrement && pendingDurationUpdate === null && !activeAlbumId) {
+    return Promise.resolve(true);
+  }
 
+  const sentWatchSeconds = pendingWatchSeconds;
+  const sentPlayIncrement = pendingPlayIncrement;
+  const sentDurationUpdate = pendingDurationUpdate;
   const updates = {};
   updates[`music_chart/songs/${song.id}/totalWatchTime`] = song.totalWatchTime;
   updates[`music_chart/songs/${song.id}/logicalMaxWatchTime`] = song.logicalMaxWatchTime || (song.playCount * song.duration);
@@ -2554,11 +2676,20 @@ function flushListenData(song) {
     }
   }
 
-  db.ref().update(updates);
-
   pendingWatchSeconds = 0;
   pendingPlayIncrement = 0;
   pendingDurationUpdate = null;
+
+  return db.ref().update(updates).then(() => true).catch((error) => {
+    // 次回の同期で再送できるよう、失敗した保留量を戻す。
+    pendingWatchSeconds += sentWatchSeconds;
+    pendingPlayIncrement += sentPlayIncrement;
+    if (pendingDurationUpdate === null && sentDurationUpdate !== null) {
+      pendingDurationUpdate = sentDurationUpdate;
+    }
+    handleDatabaseError(error);
+    return false;
+  });
 }
 
 function stopListeningTimer() {
@@ -2577,7 +2708,7 @@ function resetListenTimer() {
 }
 
 window.addEventListener('beforeunload', () => {
-  if (activeListeningSong) flushListenData(activeListeningSong);
+  if (isOwnerAuthenticated() && activeListeningSong) flushListenData(activeListeningSong);
 });
 
 let seekBarTimer = null;
@@ -2771,6 +2902,7 @@ function onYouTubeIframeAPIReady() {
     playerVars: { 'playsinline': 1, 'autoplay': 0 },
     events: {
       'onReady': () => {
+        isYouTubePlayerReady = true;
         if (currentPlaylist.length > 0) loadCurrentSong(false);
         startSeekBarUpdater();
       },
@@ -2826,6 +2958,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 function addNewSong() {
+  if (!isOwnerAuthenticated()) return showToast('ログインが必要です');
   if (isStaminaRestrictedTime() && staminaSeconds <= 0) {
     return showToast('スタミナがないため新規曲の追加ができません');
   }
@@ -2877,8 +3010,9 @@ function addNewSong() {
 
 function deleteSong(id, e) {
   e.stopPropagation();
+  if (!isOwnerAuthenticated()) return showToast('ログインが必要です');
   if (confirm('削除しますか？')) {
-    db.ref(`music_chart/songs/${id}`).remove();
+    db.ref(`music_chart/songs/${id}`).remove().catch(handleDatabaseError);
   }
 }
 
@@ -2892,6 +3026,7 @@ function exportData() {
 }
 
 function importData(event) {
+  if (!isOwnerAuthenticated()) return showToast('ログインが必要です');
   const file = event.target.files[0];
   if (!file) return;
 
@@ -3188,6 +3323,161 @@ function addManualToCustomShuffle() {
     showToast('すでに追加されているか、曲が見つかりません');
   }
 }
+
+// --------------------------------------------------
+// 🔐 Owner-only Firebase Authentication
+// --------------------------------------------------
+function setAuthStatus(message) {
+  const el = document.getElementById('auth-status');
+  if (el) el.textContent = message || '';
+}
+
+function setAuthError(message) {
+  const el = document.getElementById('auth-error');
+  if (el) el.textContent = message || '';
+}
+
+function resetPrivateAppState() {
+  songs = [];
+  albums = [];
+  currentPlaylist = [];
+  currentIndex = 0;
+  currentSongId = null;
+  activeAlbumId = null;
+  allHistoryData = {};
+  pastSnapshotData = null;
+  trendStartSnapshot = null;
+  trendEndSnapshot = null;
+  trendStartDateUsed = null;
+  trendEndDateUsed = null;
+  isInitialLoad = true;
+  isSavingSnapshot = false;
+  lastHistoryCheckDate = null;
+}
+
+function handleAuthStateChanged(user) {
+  if (user && user.uid === OWNER_UID) {
+    currentAuthUser = user;
+    document.body.classList.add('is-authenticated');
+    const label = document.getElementById('account-label');
+    if (label) label.textContent = user.email || 'Owner account';
+    setAuthStatus('オーナーとしてログイン中です。');
+    setAuthError('');
+    const signoutSwitch = document.getElementById('auth-signout-button');
+    if (signoutSwitch) signoutSwitch.style.display = 'none';
+    startDatabaseSync();
+    return;
+  }
+
+  // 認証済みでも許可UID以外にはDB接続を開始しない。
+  stopDatabaseSync();
+  currentAuthUser = null;
+  document.body.classList.remove('is-authenticated');
+  const label = document.getElementById('account-label');
+  if (label) label.textContent = '';
+  resetPrivateAppState();
+
+  if (user) {
+    setAuthStatus('このアカウントにはアクセス権がありません。');
+    setAuthError('オーナーアカウントでログインしてください。');
+    const signoutSwitch = document.getElementById('auth-signout-button');
+    if (signoutSwitch) signoutSwitch.style.display = 'inline-block';
+  } else {
+    setAuthStatus('ログインしてください。');
+    setAuthError('');
+    const signoutSwitch = document.getElementById('auth-signout-button');
+    if (signoutSwitch) signoutSwitch.style.display = 'none';
+  }
+}
+
+async function logoutOwner() {
+  if (!isOwnerAuthenticated()) {
+    try { await auth.signOut(); } catch (error) { setAuthError('ログアウトに失敗しました: ' + error.message); }
+    return;
+  }
+
+  // ログアウト直前に再生を止め、保留中の視聴データを書き込んでから認証を終了する。
+  const songToFlush = activeListeningSong;
+  activeListeningSong = null;
+  if (listenTimer) clearInterval(listenTimer);
+  listenTimer = null;
+  if (player && typeof player.pauseVideo === 'function') {
+    try { player.pauseVideo(); } catch (_) {}
+  }
+
+  try {
+    if (songToFlush) {
+      const flushed = await flushListenData(songToFlush);
+      if (flushed === false) {
+        activeListeningSong = songToFlush;
+        throw new Error('Final listening-data flush failed');
+      }
+    }
+    await auth.signOut();
+  } catch (error) {
+    console.error('Logout/flush error:', error);
+    showToast('ログアウト前の保存に失敗しました。ログイン状態を維持します。');
+  }
+}
+
+const authLoginForm = document.getElementById('auth-login-form');
+if (authLoginForm) {
+  authLoginForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const email = document.getElementById('auth-email').value.trim();
+    const passwordInput = document.getElementById('auth-password');
+    const password = passwordInput.value;
+    const button = document.getElementById('auth-login-button');
+    button.disabled = true;
+    setAuthError('');
+    setAuthStatus('ログインしています…');
+
+    try {
+      await auth.signInWithEmailAndPassword(email, password);
+      passwordInput.value = '';
+    } catch (error) {
+      console.error('Login error:', error);
+      const messages = {
+        'auth/invalid-email': 'メールアドレスの形式を確認してください。',
+        'auth/user-disabled': 'このアカウントは無効化されています。',
+        'auth/user-not-found': 'アカウントが見つかりません。',
+        'auth/wrong-password': 'パスワードが正しくありません。',
+        'auth/invalid-credential': 'メールアドレスまたはパスワードが正しくありません。',
+        'auth/too-many-requests': '試行回数が多すぎます。しばらくしてから再試行してください。',
+        'auth/network-request-failed': 'ネットワークに接続できません。'
+      };
+      setAuthError(messages[error.code] || ('ログインに失敗しました: ' + error.message));
+      setAuthStatus('ログインできませんでした。');
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
+const authSignoutSwitch = document.getElementById('auth-signout-button');
+if (authSignoutSwitch) {
+  authSignoutSwitch.addEventListener('click', async () => {
+    try { await auth.signOut(); } catch (error) { setAuthError('ログアウトに失敗しました: ' + error.message); }
+  });
+}
+
+// LOCAL persistence: GitHub Pages等の通常のWeb originでログイン状態を保持する。
+auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+  .then(() => {
+    const loginButton = document.getElementById('auth-login-button');
+    if (loginButton) loginButton.disabled = false;
+    auth.onAuthStateChanged(handleAuthStateChanged, (error) => {
+      console.error('Auth state error:', error);
+      setAuthStatus('認証状態を確認できません。');
+      setAuthError(error.message || 'Firebase Authentication error');
+    });
+  })
+  .catch((error) => {
+    console.error('Auth persistence error:', error);
+    setAuthStatus('ログイン保持を初期化できませんでした。');
+    setAuthError('ブラウザのストレージ設定またはFirebase Authenticationの設定を確認してください。' + (error.message ? '\n' + error.message : ''));
+  });
+
 </script>
 </body>
 </html>
